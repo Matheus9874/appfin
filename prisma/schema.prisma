@@ -17,27 +17,45 @@ model User {
   email        String        @unique
   transactions Transaction[]
   investments  Investment[]
+  goals        Goal[]
+  categories   Category[]
+}
+
+enum TipoTransacao {
+  RECEITA
+  DESPESA
+}
+
+enum NaturezaCusto {
+  FIXO
+  VARIAVEL
 }
 
 model Category {
-  id           String        @id @default(cuid())
+  id           String         @id @default(cuid())
+  userId       String
   nome         String
-  tipo         String
+  tipo         TipoTransacao
+  natureza     NaturezaCusto?
+  user         User           @relation(fields: [userId], references: [id])
   transactions Transaction[]
 
-  @@unique([nome, tipo])
+  @@unique([userId, nome, tipo])
+  @@index([userId])
 }
 
 model Transaction {
-  id         String   @id @default(cuid())
+  id         String        @id @default(cuid())
   userId     String
-  tipo       String
-  valor      Decimal  @db.Decimal(10, 2)
+  tipo       TipoTransacao
+  valor      Decimal       @db.Decimal(10, 2)
   categoryId String
   descricao  String
   data       DateTime
-  user       User     @relation(fields: [userId], references: [id])
-  category   Category @relation(fields: [categoryId], references: [id])
+  user       User          @relation(fields: [userId], references: [id])
+  category   Category      @relation(fields: [categoryId], references: [id])
+
+  @@index([userId])
 }
 
 enum InvestmentType {
@@ -59,4 +77,20 @@ model Investment {
   valor        Decimal        @db.Decimal(12, 2)
   data         DateTime
   user         User           @relation(fields: [userId], references: [id])
+  goals        Goal[]
+
+  @@index([userId])
+}
+
+model Goal {
+  id           String      @id @default(cuid())
+  userId       String
+  nome         String
+  valorAlvo    Decimal     @db.Decimal(12, 2)
+  prazo        DateTime
+  investmentId String?
+  user         User        @relation(fields: [userId], references: [id])
+  investment   Investment? @relation(fields: [investmentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }

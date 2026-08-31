@@ -9,8 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.4",
     "@tailwindcss/postcss": "^4.3.3",
     "lucide-react": "^1.37.0",
     "next": "16.3.3",
@@ -19,6 +22,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1",
+    "server-only": "^0.0.1",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
@@ -28,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "prisma": "^7.10.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

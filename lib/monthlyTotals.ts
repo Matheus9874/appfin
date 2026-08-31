@@ -24,12 +24,14 @@ function monthLabel(data: Date) {
  * se o histórico de transações for mais curto), sempre incluindo o mês atual.
  */
 export async function getMonthlyTotals(
+  userId: string,
   maxMeses = 6,
 ): Promise<MonthlyTotal[]> {
   const now = new Date();
   const inicioDoMes = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const primeiraTransacao = await prisma.transaction.aggregate({
+    where: { userId },
     _min: { data: true },
   });
   const primeiraData = primeiraTransacao._min.data;
@@ -61,7 +63,7 @@ export async function getMonthlyTotals(
   }
 
   const transacoesDaJanela = await prisma.transaction.findMany({
-    where: { data: { gte: inicioDaJanela } },
+    where: { userId, data: { gte: inicioDaJanela } },
     select: { tipo: true, valor: true, data: true },
   });
 
@@ -70,8 +72,8 @@ export async function getMonthlyTotals(
     const key = monthKey(t.data);
     const atual = porMes.get(key) ?? { receitas: 0, despesas: 0 };
     const valor = Number(t.valor);
-    if (t.tipo === "receita") atual.receitas += valor;
-    else if (t.tipo === "despesa") atual.despesas += valor;
+    if (t.tipo === "RECEITA") atual.receitas += valor;
+    else if (t.tipo === "DESPESA") atual.despesas += valor;
     porMes.set(key, atual);
   }
 

@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Sidebar from "./components/Sidebar";
 import ThemeProvider from "./components/ThemeProvider";
-import ThemeToggle from "./components/ThemeToggle";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finanças",
-  description: "Controle de transações financeiras",
+  title: "RumoFin",
+  description: "Controle financeiro pessoal simples e inteligente",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -28,15 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <body className="font-sans antialiased">
-        <ThemeProvider>
-          <Sidebar />
-          <div className="flex min-h-screen flex-col pl-64">
-            <header className="flex items-center justify-end border-b border-border px-8 py-4">
-              <ThemeToggle />
-            </header>
-            <main className="flex-1 px-8 py-8">{children}</main>
-          </div>
-        </ThemeProvider>
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );
