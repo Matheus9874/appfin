@@ -22,6 +22,8 @@
   --color-positive-soft: #dcfce7;
   --color-negative: #dc2626;
   --color-negative-soft: #fee2e2;
+  --color-warning: #d97706;
+  --color-warning-soft: #fef3c7;
 
   --color-chart-1: #2a78d6;
   --color-chart-2: #eb6834;
@@ -49,6 +51,8 @@
   --color-positive-soft: rgba(74, 222, 128, 0.14);
   --color-negative: #f87171;
   --color-negative-soft: rgba(248, 113, 113, 0.14);
+  --color-warning: #fbbf24;
+  --color-warning-soft: rgba(251, 191, 36, 0.14);
 
   --color-chart-1: #3987e5;
   --color-chart-2: #d95926;

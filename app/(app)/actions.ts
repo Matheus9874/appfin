@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
 import { NOVA_CATEGORIA_VALUE } from "@/lib/constants";
+import {
+  parsePositiveNumber,
+  parseRequiredDate,
+  requireNonEmpty,
+} from "@/lib/validation";
 import type {
   NaturezaCusto,
   TipoTransacao,
@@ -20,7 +25,14 @@ async function resolveCategoryId(
   userId: string,
 ) {
   if (categoriaSelecionada !== NOVA_CATEGORIA_VALUE) {
-    return categoriaSelecionada;
+    const categoria = await prisma.category.findFirst({
+      where: { id: categoriaSelecionada, userId },
+      select: { id: true },
+    });
+    if (!categoria) {
+      throw new Error("Categoria inválida.");
+    }
+    return categoria.id;
   }
   if (!novaCategoriaNome) {
     throw new Error("Informe o nome da nova categoria.");
@@ -42,7 +54,6 @@ async function resolveCategoryId(
 
 export async function createTransaction(formData: FormData) {
   const tipo = String(formData.get("tipo") ?? "") as TipoTransacao;
-  const valor = String(formData.get("valor") ?? "");
   const categoriaSelecionada = String(formData.get("categoryId") ?? "");
   const novaCategoriaNome = String(
     formData.get("novaCategoriaNome") ?? "",
@@ -50,22 +61,21 @@ export async function createTransaction(formData: FormData) {
   const novaCategoriaNatureza = String(
     formData.get("novaCategoriaNatureza") ?? "",
   );
-  const descricao = String(formData.get("descricao") ?? "");
-  const data = String(formData.get("data") ?? "");
 
-  if (
-    !TIPOS_TRANSACAO.includes(tipo) ||
-    !valor ||
-    !categoriaSelecionada ||
-    !descricao ||
-    !data
-  ) {
-    throw new Error("Todos os campos são obrigatórios.");
+  if (!TIPOS_TRANSACAO.includes(tipo)) {
+    throw new Error("Selecione o tipo da transação.");
   }
+  const valor = parsePositiveNumber(String(formData.get("valor") ?? ""), "Valor");
+  const categoriaValida = requireNonEmpty(categoriaSelecionada, "Categoria");
+  const descricao = requireNonEmpty(
+    String(formData.get("descricao") ?? ""),
+    "Descrição",
+  );
+  const data = parseRequiredDate(String(formData.get("data") ?? ""), "Data");
 
   const userId = await getCurrentUserId();
   const categoryId = await resolveCategoryId(
-    categoriaSelecionada,
+    categoriaValida,
     novaCategoriaNome,
     novaCategoriaNatureza,
     tipo,
@@ -78,7 +88,7 @@ export async function createTransaction(formData: FormData) {
       valor,
       categoryId,
       descricao,
-      data: new Date(data),
+      data,
       userId,
     },
   });
@@ -88,9 +98,8 @@ export async function createTransaction(formData: FormData) {
 }
 
 export async function updateTransaction(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
+  const id = requireNonEmpty(String(formData.get("id") ?? ""), "Transação");
   const tipo = String(formData.get("tipo") ?? "") as TipoTransacao;
-  const valor = String(formData.get("valor") ?? "");
   const categoriaSelecionada = String(formData.get("categoryId") ?? "");
   const novaCategoriaNome = String(
     formData.get("novaCategoriaNome") ?? "",
@@ -98,23 +107,21 @@ export async function updateTransaction(formData: FormData) {
   const novaCategoriaNatureza = String(
     formData.get("novaCategoriaNatureza") ?? "",
   );
-  const descricao = String(formData.get("descricao") ?? "");
-  const data = String(formData.get("data") ?? "");
 
-  if (
-    !id ||
-    !TIPOS_TRANSACAO.includes(tipo) ||
-    !valor ||
-    !categoriaSelecionada ||
-    !descricao ||
-    !data
-  ) {
-    throw new Error("Todos os campos são obrigatórios.");
+  if (!TIPOS_TRANSACAO.includes(tipo)) {
+    throw new Error("Selecione o tipo da transação.");
   }
+  const valor = parsePositiveNumber(String(formData.get("valor") ?? ""), "Valor");
+  const categoriaValida = requireNonEmpty(categoriaSelecionada, "Categoria");
+  const descricao = requireNonEmpty(
+    String(formData.get("descricao") ?? ""),
+    "Descrição",
+  );
+  const data = parseRequiredDate(String(formData.get("data") ?? ""), "Data");
 
   const userId = await getCurrentUserId();
   const categoryId = await resolveCategoryId(
-    categoriaSelecionada,
+    categoriaValida,
     novaCategoriaNome,
     novaCategoriaNatureza,
     tipo,
@@ -128,7 +135,7 @@ export async function updateTransaction(formData: FormData) {
       valor,
       categoryId,
       descricao,
-      data: new Date(data),
+      data,
     },
   });
 

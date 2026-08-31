@@ -2,8 +2,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 const MODEL = "claude-sonnet-4-6";
+const RATE_LIMIT_MAX_CALLS = 10;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 function chaveMes(data: Date) {
   return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
@@ -97,6 +100,22 @@ export async function POST() {
     userId = await getCurrentUserId();
   } catch {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(
+    `insights:${userId}`,
+    RATE_LIMIT_MAX_CALLS,
+    RATE_LIMIT_WINDOW_MS,
+  );
+  if (!rateLimit.allowed) {
+    const retryAfterSeconds = Math.ceil(rateLimit.retryAfterMs / 1000);
+    return NextResponse.json(
+      {
+        error:
+          "Você atingiu o limite de solicitações de insights. Tente novamente mais tarde.",
+      },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+    );
   }
 
   if (!process.env.ANTHROPIC_API_KEY) {

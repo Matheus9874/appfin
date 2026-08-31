@@ -1,4 +1,5 @@
 import {
+  Calculator,
   FileText,
   LineChart,
   PieChart,
@@ -23,6 +24,14 @@ export const REPORTS: ReportDefinition[] = [
     description:
       "Projete o crescimento do seu dinheiro com juros compostos e aportes mensais.",
     icon: TrendingUp,
+    status: "disponivel",
+  },
+  {
+    slug: "simulador-compra",
+    title: "Simulador de Compra e Financiamento",
+    description:
+      "Veja o impacto real de uma compra parcelada no seu orçamento antes de assumir o compromisso.",
+    icon: Calculator,
     status: "disponivel",
   },
   {

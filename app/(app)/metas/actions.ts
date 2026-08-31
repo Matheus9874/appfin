@@ -4,30 +4,53 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
 import { NENHUM_INVESTIMENTO_VALUE } from "@/lib/constants";
+import {
+  parsePositiveNumber,
+  parseRequiredDate,
+  requireNonEmpty,
+} from "@/lib/validation";
+
+async function resolveInvestmentId(
+  investmentIdSelecionado: string,
+  userId: string,
+) {
+  if (
+    !investmentIdSelecionado ||
+    investmentIdSelecionado === NENHUM_INVESTIMENTO_VALUE
+  ) {
+    return null;
+  }
+  const investimento = await prisma.investment.findFirst({
+    where: { id: investmentIdSelecionado, userId },
+    select: { id: true },
+  });
+  if (!investimento) {
+    throw new Error("Investimento inválido.");
+  }
+  return investimento.id;
+}
 
 export async function createGoal(formData: FormData) {
-  const nome = String(formData.get("nome") ?? "").trim();
-  const valorAlvo = String(formData.get("valorAlvo") ?? "");
-  const prazo = String(formData.get("prazo") ?? "");
+  const nome = requireNonEmpty(String(formData.get("nome") ?? ""), "Nome");
+  const valorAlvo = parsePositiveNumber(
+    String(formData.get("valorAlvo") ?? ""),
+    "Valor-alvo",
+  );
+  const prazo = parseRequiredDate(String(formData.get("prazo") ?? ""), "Prazo");
   const investmentIdSelecionado = String(formData.get("investmentId") ?? "");
 
-  if (!nome || !valorAlvo || !prazo) {
-    throw new Error("Preencha nome, valor-alvo e prazo da meta.");
-  }
-
   const userId = await getCurrentUserId();
-
-  const investmentId =
-    investmentIdSelecionado && investmentIdSelecionado !== NENHUM_INVESTIMENTO_VALUE
-      ? investmentIdSelecionado
-      : null;
+  const investmentId = await resolveInvestmentId(
+    investmentIdSelecionado,
+    userId,
+  );
 
   await prisma.goal.create({
     data: {
       userId,
       nome,
       valorAlvo,
-      prazo: new Date(prazo),
+      prazo,
       investmentId,
     },
   });
@@ -37,29 +60,27 @@ export async function createGoal(formData: FormData) {
 }
 
 export async function updateGoal(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  const nome = String(formData.get("nome") ?? "").trim();
-  const valorAlvo = String(formData.get("valorAlvo") ?? "");
-  const prazo = String(formData.get("prazo") ?? "");
+  const id = requireNonEmpty(String(formData.get("id") ?? ""), "Meta");
+  const nome = requireNonEmpty(String(formData.get("nome") ?? ""), "Nome");
+  const valorAlvo = parsePositiveNumber(
+    String(formData.get("valorAlvo") ?? ""),
+    "Valor-alvo",
+  );
+  const prazo = parseRequiredDate(String(formData.get("prazo") ?? ""), "Prazo");
   const investmentIdSelecionado = String(formData.get("investmentId") ?? "");
 
-  if (!id || !nome || !valorAlvo || !prazo) {
-    throw new Error("Preencha nome, valor-alvo e prazo da meta.");
-  }
-
   const userId = await getCurrentUserId();
-
-  const investmentId =
-    investmentIdSelecionado && investmentIdSelecionado !== NENHUM_INVESTIMENTO_VALUE
-      ? investmentIdSelecionado
-      : null;
+  const investmentId = await resolveInvestmentId(
+    investmentIdSelecionado,
+    userId,
+  );
 
   const { count } = await prisma.goal.updateMany({
     where: { id, userId },
     data: {
       nome,
       valorAlvo,
-      prazo: new Date(prazo),
+      prazo,
       investmentId,
     },
   });

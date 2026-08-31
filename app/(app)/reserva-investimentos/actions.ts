@@ -4,18 +4,28 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
 import { INVESTMENT_TYPES } from "@/lib/investmentTypes";
+import {
+  parseNonNegativeNumber,
+  parseRequiredDate,
+  requireNonEmpty,
+} from "@/lib/validation";
 import type { InvestmentType } from "@/app/generated/prisma/enums";
 
 export async function createInvestmentEntry(formData: FormData) {
   const tipo = String(formData.get("tipo") ?? "") as InvestmentType;
-  const instituicao = String(formData.get("instituicao") ?? "").trim();
-  const nome = String(formData.get("nome") ?? "").trim();
-  const valor = String(formData.get("valor") ?? "");
-  const data = String(formData.get("data") ?? "");
-
-  if (!INVESTMENT_TYPES.includes(tipo) || !instituicao || !valor || !data) {
-    throw new Error("Preencha tipo, instituição, valor e data.");
+  if (!INVESTMENT_TYPES.includes(tipo)) {
+    throw new Error("Selecione o tipo de investimento.");
   }
+  const instituicao = requireNonEmpty(
+    String(formData.get("instituicao") ?? ""),
+    "Instituição",
+  );
+  const nome = String(formData.get("nome") ?? "").trim();
+  const valor = parseNonNegativeNumber(
+    String(formData.get("valor") ?? ""),
+    "Valor",
+  );
+  const data = parseRequiredDate(String(formData.get("data") ?? ""), "Data");
 
   const userId = await getCurrentUserId();
 
@@ -26,7 +36,7 @@ export async function createInvestmentEntry(formData: FormData) {
       instituicao,
       nome: nome || null,
       valor,
-      data: new Date(data),
+      data,
     },
   });
 
@@ -34,22 +44,21 @@ export async function createInvestmentEntry(formData: FormData) {
 }
 
 export async function updateInvestmentEntry(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
+  const id = requireNonEmpty(String(formData.get("id") ?? ""), "Lançamento");
   const tipo = String(formData.get("tipo") ?? "") as InvestmentType;
-  const instituicao = String(formData.get("instituicao") ?? "").trim();
-  const nome = String(formData.get("nome") ?? "").trim();
-  const valor = String(formData.get("valor") ?? "");
-  const data = String(formData.get("data") ?? "");
-
-  if (
-    !id ||
-    !INVESTMENT_TYPES.includes(tipo) ||
-    !instituicao ||
-    !valor ||
-    !data
-  ) {
-    throw new Error("Preencha tipo, instituição, valor e data.");
+  if (!INVESTMENT_TYPES.includes(tipo)) {
+    throw new Error("Selecione o tipo de investimento.");
   }
+  const instituicao = requireNonEmpty(
+    String(formData.get("instituicao") ?? ""),
+    "Instituição",
+  );
+  const nome = String(formData.get("nome") ?? "").trim();
+  const valor = parseNonNegativeNumber(
+    String(formData.get("valor") ?? ""),
+    "Valor",
+  );
+  const data = parseRequiredDate(String(formData.get("data") ?? ""), "Data");
 
   const userId = await getCurrentUserId();
   const { count } = await prisma.investment.updateMany({
@@ -59,7 +68,7 @@ export async function updateInvestmentEntry(formData: FormData) {
       instituicao,
       nome: nome || null,
       valor,
-      data: new Date(data),
+      data,
     },
   });
 

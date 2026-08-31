@@ -1,11 +1,18 @@
 import {
+  AlertTriangle,
+  CheckCircle2,
+  HeartPulse,
   Landmark,
+  Lock,
   Minus,
   PieChart,
+  PiggyBank,
   Scale,
+  Shuffle,
   Target,
   TrendingDown,
   TrendingUp,
+  Umbrella,
   Wallet,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +20,7 @@ import { getCurrentUserId } from "@/lib/auth";
 import { getMonthlyTotals } from "@/lib/monthlyTotals";
 import { getCurrentInvestments, investmentKey } from "@/lib/currentInvestments";
 import { calcularProgressoMeta } from "@/lib/goalProgress";
+import { calcularSaudeFinanceira } from "@/lib/financialHealth";
 import { getCategoryIcon } from "@/lib/categoryIcons";
 import InfoTooltip from "@/app/components/InfoTooltip";
 import InsightsSection from "./InsightsSection";
@@ -45,11 +53,14 @@ export default async function DashboardPage() {
   const inicioDoMes = new Date(now.getFullYear(), now.getMonth(), 1);
   const inicioDoProximoMes = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
+  const inicioJanelaSaude = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
   const [
     totalPorTipo,
     totaisMensais,
     investimentos,
     despesasPorCategoriaDoMes,
+    despesasPorNaturezaJanela,
     categorias,
     goals,
   ] = await Promise.all([
@@ -72,6 +83,14 @@ export default async function DashboardPage() {
       },
       _sum: { valor: true },
     }),
+    prisma.transaction.findMany({
+      where: {
+        userId,
+        tipo: "DESPESA",
+        data: { gte: inicioJanelaSaude, lt: inicioDoProximoMes },
+      },
+      select: { valor: true, category: { select: { natureza: true } } },
+    }),
     prisma.category.findMany({ where: { userId } }),
     prisma.goal.findMany({
       where: { userId },
@@ -91,6 +110,31 @@ export default async function DashboardPage() {
     0,
   );
   const patrimonioTotal = saldoTotal + valorInvestimentos;
+
+  const mesesConsiderados = totaisMensais.length || 1;
+  const rendaMedia =
+    totaisMensais.reduce((acc, m) => acc + m.receitas, 0) / mesesConsiderados;
+  const despesaMedia =
+    totaisMensais.reduce((acc, m) => acc + m.despesas, 0) / mesesConsiderados;
+  const despesaFixaMedia =
+    despesasPorNaturezaJanela
+      .filter((t) => t.category.natureza === "FIXO")
+      .reduce((acc, t) => acc + Number(t.valor), 0) / mesesConsiderados;
+  const despesaVariavelMedia =
+    despesasPorNaturezaJanela
+      .filter((t) => t.category.natureza === "VARIAVEL")
+      .reduce((acc, t) => acc + Number(t.valor), 0) / mesesConsiderados;
+  const reservaEmergencia = investimentosAtuais
+    .filter((i) => i.tipo === "RESERVA_EMERGENCIA")
+    .reduce((acc, i) => acc + Number(i.valor), 0);
+
+  const saudeFinanceira = calcularSaudeFinanceira({
+    rendaMedia,
+    despesaMedia,
+    despesaFixaMedia,
+    despesaVariavelMedia,
+    reservaEmergencia,
+  });
 
   const chartData: MonthlyChartPoint[] = totaisMensais.map((m) => ({
     mes: m.label,
@@ -144,20 +188,27 @@ export default async function DashboardPage() {
 
       <InsightsSection />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Saldo total"
           value={formatMoeda(saldoTotal)}
           icon={Wallet}
           tone="accent"
-          info="Soma de todas as receitas menos todas as despesas já registradas, desde a primeira transação. É o saldo acumulado, não o saldo de um período específico."
+          info="Soma de todas as receitas menos todas as despesas já registradas, desde a primeira transação. É o saldo acumulado, não o saldo de um período específico. Não inclui investimentos."
+        />
+        <StatCard
+          label="Total investido"
+          value={formatMoeda(valorInvestimentos)}
+          icon={PiggyBank}
+          tone="accent"
+          info="Valor mais recente de cada investimento e reserva cadastrados, somados. Não inclui o saldo em conta."
         />
         <StatCard
           label="Patrimônio total"
           value={formatMoeda(patrimonioTotal)}
           icon={Landmark}
           tone="accent"
-          info="Saldo total mais o valor mais recente de cada investimento e reserva cadastrados. Uma visão geral de quanto você tem, somando conta corrente e investimentos."
+          info="Saldo total mais o valor investido. Uma visão geral de quanto você tem, somando conta corrente e investimentos."
         />
       </div>
 
@@ -206,6 +257,59 @@ export default async function DashboardPage() {
             }
             info="Compara o total de despesas deste mês com o total de despesas do mês anterior."
           />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-4 flex items-center gap-1.5 text-base font-semibold">
+          <HeartPulse size={16} className="text-muted" />
+          Saúde financeira
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Despesas fixas"
+            value={`${saudeFinanceira.percentualDespesasFixas.toFixed(0)}%`}
+            icon={Lock}
+            tone="accent"
+            info="Percentual da sua renda média mensal comprometido com despesas de categorias marcadas como custo fixo, na média dos últimos meses."
+          />
+          <StatCard
+            label="Despesas variáveis"
+            value={`${saudeFinanceira.percentualDespesasVariaveis.toFixed(0)}%`}
+            icon={Shuffle}
+            tone="accent"
+            info="Percentual da sua renda média mensal direcionado a despesas de categorias marcadas como custo variável, na média dos últimos meses."
+          />
+          <StatCard
+            label="Reserva de emergência"
+            value={
+              saudeFinanceira.mesesReservaEmergencia === null
+                ? "Sem dados"
+                : `${saudeFinanceira.mesesReservaEmergencia.toFixed(1)} meses`
+            }
+            icon={Umbrella}
+            tone="accent"
+            info="Valor mais recente dos seus investimentos de reserva de emergência, dividido pela sua despesa média mensal. O recomendado geralmente é entre 3 e 6 meses de despesas."
+          />
+        </div>
+        <div className="mt-4 flex flex-col gap-2">
+          {saudeFinanceira.mensagens.map((mensagem) => {
+            const positiva = mensagem.tipo === "positiva";
+            const Icon = positiva ? CheckCircle2 : AlertTriangle;
+            return (
+              <div
+                key={mensagem.texto}
+                className={`flex items-start gap-2 rounded-lg px-4 py-3 text-sm ${
+                  positiva
+                    ? "bg-positive-soft text-positive"
+                    : "bg-warning-soft text-warning"
+                }`}
+              >
+                <Icon size={16} className="mt-0.5 shrink-0" />
+                <span>{mensagem.texto}</span>
+              </div>
+            );
+          })}
         </div>
       </section>
 
