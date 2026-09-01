@@ -13,14 +13,12 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { getCategoryIcon } from "@/lib/categoryIcons";
 import { paraMesLocal } from "@/lib/dateLocal";
 import TransactionRowActions from "./TransactionRowActions";
-import { updateTransactionNatureza } from "../actions";
 import type {
   MeioPagamento,
-  NaturezaCusto,
   OrigemTransacao,
   TipoTransacao,
 } from "@/app/generated/prisma/enums";
@@ -55,18 +53,8 @@ type TransactionRow = {
   dataISO: string;
   origem: OrigemTransacao;
   meioPagamento: MeioPagamento | null;
-  natureza: NaturezaCusto | null;
   transferenciaInterna: boolean;
 };
-
-type TabKey = "todas" | "fixas" | "variaveis" | "nao-classificadas";
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "todas", label: "Todas" },
-  { key: "fixas", label: "Custos Fixos" },
-  { key: "variaveis", label: "Custos Variáveis" },
-  { key: "nao-classificadas", label: "Não classificadas" },
-];
 
 type MeioPagamentoTabKey = "todas" | "CREDITO" | "PIX" | "DEBITO";
 
@@ -102,46 +90,6 @@ function formatMoeda(valor: number) {
   });
 }
 
-function NaturezaSelect({
-  transactionId,
-  natureza,
-}: {
-  transactionId: string;
-  natureza: NaturezaCusto | null;
-}) {
-  const [isPending, startTransition] = useTransition();
-  const [valorAtual, setValorAtual] = useState(natureza);
-
-  function handleChange(novaNatureza: NaturezaCusto | "") {
-    const valor = novaNatureza === "" ? null : novaNatureza;
-    setValorAtual(valor);
-    startTransition(async () => {
-      await updateTransactionNatureza(transactionId, valor);
-    });
-  }
-
-  return (
-    <select
-      value={valorAtual ?? ""}
-      disabled={isPending}
-      onChange={(e) =>
-        handleChange(e.target.value as NaturezaCusto | "")
-      }
-      className={`rounded-full border-0 px-2.5 py-1 text-xs font-medium ${
-        valorAtual === "FIXO"
-          ? "bg-accent-soft text-accent"
-          : valorAtual === "VARIAVEL"
-            ? "bg-surface-hover text-foreground"
-            : "bg-surface-hover text-muted"
-      } ${isPending ? "opacity-60" : ""}`}
-    >
-      <option value="">Não classificada</option>
-      <option value="FIXO">Fixo</option>
-      <option value="VARIAVEL">Variável</option>
-    </select>
-  );
-}
-
 function BadgeTransferenciaInterna() {
   return (
     <span
@@ -174,7 +122,6 @@ export default function TransactionsTable({
   const [origemFiltro, setOrigemFiltro] = useState<OrigemFiltro>("todas");
   const [meioPagamentoTab, setMeioPagamentoTab] =
     useState<MeioPagamentoTabKey>("todas");
-  const [activeTab, setActiveTab] = useState<TabKey>("todas");
 
   const transacoesBase = useMemo(() => {
     return transactions.filter((t) => {
@@ -198,48 +145,10 @@ export default function TransactionsTable({
     [transacoesBase],
   );
 
-  // Aba "Forma de pagamento" — independente da aba de natureza (Custos
-  // Fixos/Variáveis): uma transação pode ser as duas coisas ao mesmo tempo
-  // (ex.: custo fixo pago no cartão), então os dois filtros se combinam.
-  const transacoesPorPagamento = useMemo(() => {
+  const transacoesFiltradas = useMemo(() => {
     if (meioPagamentoTab === "todas") return transacoesBase;
     return transacoesBase.filter((t) => t.meioPagamento === meioPagamentoTab);
   }, [transacoesBase, meioPagamentoTab]);
-
-  const contagens = useMemo(
-    () => ({
-      todas: transacoesPorPagamento.length,
-      fixas: transacoesPorPagamento.filter(
-        (t) => t.tipo === "DESPESA" && t.natureza === "FIXO",
-      ).length,
-      variaveis: transacoesPorPagamento.filter(
-        (t) => t.tipo === "DESPESA" && t.natureza === "VARIAVEL",
-      ).length,
-      "nao-classificadas": transacoesPorPagamento.filter(
-        (t) =>
-          t.tipo === "DESPESA" &&
-          t.natureza === null &&
-          !t.transferenciaInterna,
-      ).length,
-    }),
-    [transacoesPorPagamento],
-  );
-
-  const transacoesFiltradas = useMemo(() => {
-    if (activeTab === "todas") return transacoesPorPagamento;
-    if (activeTab === "nao-classificadas") {
-      return transacoesPorPagamento.filter(
-        (t) =>
-          t.tipo === "DESPESA" &&
-          t.natureza === null &&
-          !t.transferenciaInterna,
-      );
-    }
-    const natureza: NaturezaCusto = activeTab === "fixas" ? "FIXO" : "VARIAVEL";
-    return transacoesPorPagamento.filter(
-      (t) => t.tipo === "DESPESA" && t.natureza === natureza,
-    );
-  }, [transacoesPorPagamento, activeTab]);
 
   const totalFiltrado = transacoesFiltradas.reduce((acc, t) => {
     return acc + (t.tipo === "RECEITA" ? t.valor : -t.valor);
@@ -249,7 +158,7 @@ export default function TransactionsTable({
     mesFiltro !== TODOS_OS_MESES ||
     origemFiltro !== "todas" ||
     meioPagamentoTab !== "todas";
-  const mostrarTotalizador = activeTab !== "todas" || meioPagamentoTab !== "todas";
+  const mostrarTotalizador = meioPagamentoTab !== "todas";
 
   return (
     <div className="flex flex-col gap-4">
@@ -293,55 +202,7 @@ export default function TransactionsTable({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("todas");
-            setMeioPagamentoTab("todas");
-          }}
-          className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
-            activeTab === "todas" && meioPagamentoTab === "todas"
-              ? "bg-accent-soft text-accent"
-              : "text-muted hover:bg-surface-hover hover:text-foreground"
-          }`}
-        >
-          Todas
-          <span
-            className={`rounded-full px-1.5 py-0.5 text-xs ${
-              activeTab === "todas" && meioPagamentoTab === "todas"
-                ? "bg-accent text-accent-foreground"
-                : "bg-surface-hover text-muted"
-            }`}
-          >
-            {transacoesBase.length}
-          </span>
-        </button>
-
-        {TABS.filter((tab) => tab.key !== "todas").map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
-              activeTab === tab.key
-                ? "bg-accent-soft text-accent"
-                : "text-muted hover:bg-surface-hover hover:text-foreground"
-            }`}
-          >
-            {tab.label}
-            <span
-              className={`rounded-full px-1.5 py-0.5 text-xs ${
-                activeTab === tab.key
-                  ? "bg-accent text-accent-foreground"
-                  : "bg-surface-hover text-muted"
-              }`}
-            >
-              {contagens[tab.key]}
-            </span>
-          </button>
-        ))}
-
-        {MEIO_PAGAMENTO_TABS.filter((tab) => tab.key !== "todas").map((tab) => (
+        {MEIO_PAGAMENTO_TABS.map((tab) => (
           <button
             key={tab.key}
             type="button"
@@ -374,11 +235,7 @@ export default function TransactionsTable({
           <p className="text-sm text-muted">
             {filtrosAtivos
               ? "Nenhuma transação encontrada com os filtros selecionados."
-              : activeTab === "todas"
-                ? "Nenhuma transação cadastrada ainda."
-                : activeTab === "nao-classificadas"
-                  ? "Nenhuma transação pendente de classificação."
-                  : "Nenhuma transação nesta categoria de custo."}
+              : "Nenhuma transação cadastrada ainda."}
           </p>
         </div>
       ) : (
@@ -390,7 +247,6 @@ export default function TransactionsTable({
                 <th className="px-6 py-3">Categoria</th>
                 <th className="px-6 py-3">Descrição</th>
                 <th className="px-6 py-3">Forma de pagamento</th>
-                <th className="px-6 py-3">Natureza</th>
                 <th className="px-6 py-3 text-right">Valor</th>
                 <th className="px-6 py-3 text-right">Ações</th>
               </tr>
@@ -455,16 +311,6 @@ export default function TransactionsTable({
                         <span className="text-xs text-muted">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      {isReceita || t.transferenciaInterna ? (
-                        <span className="text-xs text-muted">—</span>
-                      ) : (
-                        <NaturezaSelect
-                          transactionId={t.id}
-                          natureza={t.natureza}
-                        />
-                      )}
-                    </td>
                     <td
                       className={`px-6 py-4 text-right font-medium whitespace-nowrap ${
                         isReceita ? "text-positive" : "text-negative"
@@ -499,18 +345,9 @@ export default function TransactionsTable({
             {mostrarTotalizador && (
               <tfoot>
                 <tr className="border-t border-border text-sm font-medium">
-                  <td className="px-6 py-3 text-muted" colSpan={5}>
-                    Total
-                    {activeTab !== "todas" &&
-                      ` ${
-                        activeTab === "fixas"
-                          ? "custos fixos"
-                          : activeTab === "variaveis"
-                            ? "custos variáveis"
-                            : "não classificadas"
-                      }`}
-                    {meioPagamentoTab !== "todas" &&
-                      ` · ${MEIO_PAGAMENTO_TABS.find((t) => t.key === meioPagamentoTab)?.label}`}
+                  <td className="px-6 py-3 text-muted" colSpan={4}>
+                    Total ·{" "}
+                    {MEIO_PAGAMENTO_TABS.find((t) => t.key === meioPagamentoTab)?.label}
                   </td>
                   <td className="px-6 py-3 text-right text-negative">
                     {formatMoeda(Math.abs(totalFiltrado))}

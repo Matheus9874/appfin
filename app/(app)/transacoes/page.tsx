@@ -30,7 +30,6 @@ export default async function TransacoesPage() {
     dataISO: paraDataLocal(t.data),
     origem: t.origem,
     meioPagamento: t.meioPagamento,
-    natureza: t.natureza,
     transferenciaInterna: t.transferenciaInterna,
   }));
 
