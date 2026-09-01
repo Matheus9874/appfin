@@ -16,4 +16,6 @@ export function revalidateFinancialPaths() {
   revalidatePath("/metas");
   revalidatePath("/relatorios/extrato");
   revalidatePath("/relatorios/gastos-por-categoria");
+  revalidatePath("/planejamento");
+  revalidatePath("/planejamento/classificacao");
 }

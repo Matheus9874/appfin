@@ -10,8 +10,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PiggyBank,
+  SlidersHorizontal,
   Tags,
   Target,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -48,6 +50,18 @@ const NAV_ITEMS: NavItem[] = [
     icon: PiggyBank,
   },
   { href: "/metas", label: "Metas", icon: Target },
+  {
+    href: "/planejamento",
+    label: "Planejamento",
+    icon: Wallet,
+    children: [
+      {
+        href: "/planejamento/classificacao",
+        label: "Classificar Fixo/Variável",
+        icon: SlidersHorizontal,
+      },
+    ],
+  },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
   { href: "/assistente", label: "Assistente", icon: Bot },
 ];

@@ -22,6 +22,7 @@ model User {
   chatMessages   ChatMessage[]
   pluggyItems    PluggyItem[]
   pluggyAccounts PluggyAccount[]
+  monthlyPlans   MonthlyPlan[]
 }
 
 enum TipoTransacao {
@@ -180,5 +181,29 @@ model PluggyAccount {
   user             User              @relation(fields: [userId], references: [id])
   pluggyItem       PluggyItem        @relation(fields: [pluggyItemId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+}
+
+/**
+ * Como o usuário planeja dividir a renda de um mês em 4 fatias grandes
+ * (essencial/pessoal/reserva/investimento) — guardado em percentuais (não
+ * valores absolutos) pra continuar válido se a renda mudar de um mês pro
+ * outro; o valor em R$ de cada fatia é sempre `rendaPlanejada * percentual`,
+ * calculado na hora de exibir. Ver lib/monthlyPlanActuals.ts para o cálculo
+ * do "realizado" que é comparado com isso.
+ */
+model MonthlyPlan {
+  id                     String   @id @default(cuid())
+  userId                 String
+  mes                    Int
+  ano                    Int
+  rendaPlanejada         Decimal  @db.Decimal(12, 2)
+  percentualEssencial    Decimal  @db.Decimal(5, 2)
+  percentualPessoal      Decimal  @db.Decimal(5, 2)
+  percentualReserva      Decimal  @db.Decimal(5, 2)
+  percentualInvestimento Decimal  @db.Decimal(5, 2)
+  user                   User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, mes, ano])
   @@index([userId])
 }

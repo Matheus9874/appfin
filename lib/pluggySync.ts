@@ -9,7 +9,11 @@ import {
   ehPagamentoDeFaturaCartao,
   parearSaidasComPagamentoFatura,
 } from "./pluggyTransferDetection";
-import type { MeioPagamento, TipoTransacao } from "@/app/generated/prisma/enums";
+import type {
+  MeioPagamento,
+  NaturezaCusto,
+  TipoTransacao,
+} from "@/app/generated/prisma/enums";
 
 const DIAS_JANELA_PADRAO = 90;
 
@@ -150,10 +154,12 @@ export async function syncPluggyItem(
     fetchCategoryTranslations(),
   ]);
 
-  const categoriaIdPorChave = new Map<string, string>();
+  type CategoriaResolvida = { id: string; natureza: NaturezaCusto | null };
+
+  const categoriaPorChave = new Map<string, CategoriaResolvida>();
   const categoriasExistentesPorTipo = new Map<
     TipoTransacao,
-    { id: string; nome: string }[]
+    { id: string; nome: string; natureza: NaturezaCusto | null }[]
   >();
 
   async function carregarCategoriasExistentes(tipo: TipoTransacao) {
@@ -161,7 +167,7 @@ export async function syncPluggyItem(
     if (carregadas) return carregadas;
     const categorias = await prisma.category.findMany({
       where: { userId, tipo },
-      select: { id: true, nome: true },
+      select: { id: true, nome: true, natureza: true },
     });
     categoriasExistentesPorTipo.set(tipo, categorias);
     return categorias;
@@ -186,17 +192,18 @@ export async function syncPluggyItem(
     nomeCandidato: string,
     tipo: TipoTransacao,
     evitarFuzzyMatch = false,
-  ): Promise<string> {
+  ): Promise<CategoriaResolvida> {
     const chave = `${tipo}:${nomeCandidato}`;
-    const cacheada = categoriaIdPorChave.get(chave);
+    const cacheada = categoriaPorChave.get(chave);
     if (cacheada) return cacheada;
 
     const categoriasExistentes = await carregarCategoriasExistentes(tipo);
 
     const exata = categoriasExistentes.find((c) => c.nome === nomeCandidato);
     if (exata) {
-      categoriaIdPorChave.set(chave, exata.id);
-      return exata.id;
+      const resolvida = { id: exata.id, natureza: exata.natureza };
+      categoriaPorChave.set(chave, resolvida);
+      return resolvida;
     }
 
     if (!evitarFuzzyMatch) {
@@ -205,8 +212,15 @@ export async function syncPluggyItem(
         categoriasExistentes,
       );
       if (correspondencia) {
-        categoriaIdPorChave.set(chave, correspondencia.id);
-        return correspondencia.id;
+        const existente = categoriasExistentes.find(
+          (c) => c.id === correspondencia.id,
+        );
+        const resolvida = {
+          id: correspondencia.id,
+          natureza: existente?.natureza ?? null,
+        };
+        categoriaPorChave.set(chave, resolvida);
+        return resolvida;
       }
     }
 
@@ -218,9 +232,14 @@ export async function syncPluggyItem(
         natureza: tipo === "DESPESA" ? "VARIAVEL" : undefined,
       },
     });
-    categoriasExistentes.push({ id: nova.id, nome: nova.nome });
-    categoriaIdPorChave.set(chave, nova.id);
-    return nova.id;
+    categoriasExistentes.push({
+      id: nova.id,
+      nome: nova.nome,
+      natureza: nova.natureza,
+    });
+    const resolvida = { id: nova.id, natureza: nova.natureza };
+    categoriaPorChave.set(chave, resolvida);
+    return resolvida;
   }
 
   // Persist each account's real balance, so "Saldo total" can use the
@@ -290,7 +309,7 @@ export async function syncPluggyItem(
     const nomeCategoria =
       categoriasTraduzidas.get(t.categoryId ?? "") || t.category?.trim() || "Outros";
     const ehTransferenciaInterna = transferenciaInternaPorId.get(t.id) ?? false;
-    const categoryId = await resolveCategoryId(
+    const categoria = await resolveCategoryId(
       nomeCategoria,
       tipo,
       ehTransferenciaInterna,
@@ -300,15 +319,16 @@ export async function syncPluggyItem(
       userId,
       tipo,
       valor: Math.abs(t.amount),
-      categoryId,
+      categoryId: categoria.id,
       descricao: t.description || "Transação importada",
       data: new Date(t.date),
       origem: "PLUGGY" as const,
       pluggyTransactionId: t.id,
       meioPagamento: resolveMeioPagamento(t),
-      // Left unclassified on purpose — see "Não classificadas" in the
-      // transactions table, where the user reviews these one by one.
-      natureza: null,
+      // Herda a classificação já confirmada pra categoria (ver Planejamento
+      // > Classificar Fixo/Variável) — transferência interna fica sempre
+      // sem natureza, já que não é gasto real.
+      natureza: ehTransferenciaInterna ? null : categoria.natureza,
       // Categoria original preservada de propósito (não vira "Transferência
       // interna") — só este flag decide o que entra nas somas de saldo.
       transferenciaInterna: ehTransferenciaInterna,
