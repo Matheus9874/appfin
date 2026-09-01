@@ -146,11 +146,19 @@ export default function DashboardDespesasSection({
       ? ((despesasDoMes - despesasMesAnterior) / despesasMesAnterior) * 100
       : null;
 
+  // Mês exibido em "Maiores despesas do mês" — independente do mês de
+  // referência do resto do dashboard, pra dar pra olhar meses anteriores
+  // sem afetar os outros cards.
+  const [mesTop5, setMesTop5] = useState(dataReferenciaMesKey);
+  const mesesParaTop5 = useMemo(
+    () => [...totaisMensais].reverse(),
+    [totaisMensais],
+  );
+
   const top5Despesas = useMemo(() => {
-    if (!mesAtual) return [];
     const porCategoria = new Map<string, number>();
     for (const d of despesasFiltradas) {
-      if (d.mesKey !== mesAtual.mesKey) continue;
+      if (d.mesKey !== mesTop5) continue;
       porCategoria.set(d.categoryId, (porCategoria.get(d.categoryId) ?? 0) + d.valor);
     }
     return Array.from(porCategoria.entries())
@@ -162,7 +170,7 @@ export default function DashboardDespesasSection({
       .filter((d) => d.nome)
       .sort((a, b) => b.valor - a.valor)
       .slice(0, 5);
-  }, [despesasFiltradas, mesAtual, categoriaMap]);
+  }, [despesasFiltradas, mesTop5, categoriaMap]);
   const maiorDespesaDoTop5 = top5Despesas[0]?.valor ?? 0;
 
   const filtroAtivo = filtroCartao !== "todas";
@@ -328,14 +336,27 @@ export default function DashboardDespesasSection({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section>
-          <h2 className="mb-4 flex items-center gap-1.5 text-base font-semibold">
-            <PieChart size={16} className="text-muted" />
-            Maiores despesas do mês
-          </h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold">
+              <PieChart size={16} className="text-muted" />
+              Maiores despesas do mês
+            </h2>
+            <select
+              value={mesTop5}
+              onChange={(e) => setMesTop5(e.target.value)}
+              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              {mesesParaTop5.map((m) => (
+                <option key={m.mesKey} value={m.mesKey}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
             {top5Despesas.length === 0 ? (
               <p className="text-sm text-muted">
-                Nenhuma despesa registrada este mês
+                Nenhuma despesa registrada nesse mês
                 {filtroAtivo ? " com esse filtro." : "."}
               </p>
             ) : (

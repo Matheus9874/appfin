@@ -418,17 +418,25 @@ export default function TransactionsTable({
                       </div>
                     </td>
                     <td className="px-6 py-4 text-muted">
-                      <div className="flex items-center gap-2">
-                        <span>{t.descricao}</span>
-                        {t.origem === "PLUGGY" && (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                            <Sparkles size={10} />
-                            Auto
-                          </span>
-                        )}
-                        {t.transferenciaInterna && (
-                          <BadgeTransferenciaInterna />
-                        )}
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span>{t.descricao}</span>
+                          {t.origem === "PLUGGY" && (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                              <Sparkles size={10} />
+                              Auto
+                            </span>
+                          )}
+                          {t.transferenciaInterna && (
+                            <BadgeTransferenciaInterna />
+                          )}
+                        </div>
+                        <span
+                          className="select-all font-mono text-[10px] text-muted/50"
+                          title="ID da transação"
+                        >
+                          {t.id}
+                        </span>
                       </div>
                     </td>
                     <td className="px-6 py-4">

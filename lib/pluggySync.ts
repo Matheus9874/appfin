@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./prisma";
 import { getPluggyClient } from "./pluggy";
+import type { PluggyClient } from "pluggy-sdk";
 import { encontrarCategoriaCorrespondente } from "./pluggyCategoryMapping";
 import { resolveInvestmentType } from "./pluggyInvestmentMapping";
 import {
@@ -68,6 +69,55 @@ export type PluggySyncResult = {
   investimentosImportados: number;
 };
 
+const STATUS_TERMINAIS = new Set([
+  "UPDATED",
+  "OUTDATED",
+  "LOGIN_ERROR",
+  "WAITING_USER_INPUT",
+  "WAITING_USER_ACTION",
+]);
+const REFRESH_MAX_TENTATIVAS = 10;
+const REFRESH_INTERVALO_MS = 2000;
+
+/**
+ * `fetchAccounts`/`fetchAllTransactions` só leem o que o Pluggy já tem em
+ * cache da última execução do conector — sem isso, dados novos do banco só
+ * apareceriam quando o Pluggy decidisse re-executar por conta própria
+ * (`nextAutoSyncAt`). `updateItem` dispara uma nova coleta agora; como isso
+ * roda em segundo plano no Pluggy, espera (com timeout) até o item sair de
+ * "UPDATING" antes de buscar os dados, pra sincronizar de fato trazer
+ * novidade em vez de só repetir o que já tínhamos.
+ */
+async function atualizarItemEEsperar(
+  client: PluggyClient,
+  pluggyItemId: string,
+): Promise<void> {
+  try {
+    await client.updateItem(pluggyItemId);
+  } catch {
+    // O conector "MeuPluggy" (o único disponível numa conta trial — ver
+    // MEU_PLUGGY_CONNECTOR_ID em app/api/pluggy/items/route.ts) rejeita
+    // updateItem de propósito ("MeuPluggy item cant be updated"): ele lê
+    // contas já linkadas no app Meu Pluggy, e é o próprio Pluggy quem
+    // decide quando re-executar (ver `nextAutoSyncAt` do item — hoje em
+    // torno de 24h). Isso é esperado nesse plano, não um erro de verdade;
+    // outros conectores (banco real, plano pago) devem aceitar o comando.
+    return;
+  }
+
+  for (let tentativa = 0; tentativa < REFRESH_MAX_TENTATIVAS; tentativa++) {
+    let item;
+    try {
+      item = await client.fetchItem(pluggyItemId);
+    } catch (error) {
+      console.error(`Pluggy: erro ao checar status de ${pluggyItemId}.`, error);
+      return;
+    }
+    if (STATUS_TERMINAIS.has(item.status)) return;
+    await new Promise((resolve) => setTimeout(resolve, REFRESH_INTERVALO_MS));
+  }
+}
+
 /**
  * Imports transactions and investments from a connected Pluggy item into our
  * Transaction and Investment tables. Transactions dedupe via the unique
@@ -87,6 +137,8 @@ export async function syncPluggyItem(
   },
 ): Promise<PluggySyncResult> {
   const client = getPluggyClient();
+
+  await atualizarItemEEsperar(client, pluggyItem.pluggyItemId);
 
   const dateFromBase =
     pluggyItem.lastSyncedAt ??
