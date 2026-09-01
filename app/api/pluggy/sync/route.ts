@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { syncPluggyItem } from "@/lib/pluggySync";
+import { garantirWebhooksRegistrados } from "@/lib/pluggyWebhook";
 import { revalidateFinancialPaths } from "@/lib/revalidateFinancialPaths";
 
 const RATE_LIMIT_MAX_CALLS = 20;
@@ -56,6 +57,15 @@ export async function POST(request: Request) {
       const resultado = await syncPluggyItem(userId, item);
       totalTransacoes += resultado.transacoesImportadas;
       totalInvestimentos += resultado.investimentosImportados;
+    }
+
+    // Best-effort: garante que o webhook automático fique registrado assim
+    // que APP_URL/PLUGGY_WEBHOOK_SECRET estiverem configurados, sem exigir
+    // que o usuário reconecte a conta pra isso acontecer.
+    try {
+      await garantirWebhooksRegistrados();
+    } catch (error) {
+      console.error("Pluggy: erro ao registrar webhook.", error);
     }
 
     revalidateFinancialPaths();

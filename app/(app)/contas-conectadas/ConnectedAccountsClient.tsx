@@ -159,6 +159,15 @@ export default function ConnectedAccountsClient({
         )}
       </div>
 
+      {conexoes.length > 0 && (
+        <p className="text-xs text-muted">
+          A sincronização acontece automaticamente quando o banco avisa o
+          Pluggy sobre uma movimentação nova (geralmente em minutos), com uma
+          verificação de segurança uma vez por dia. Use o botão acima se
+          quiser forçar uma atualização imediata.
+        </p>
+      )}
+
       {error && (
         <div className="rounded-lg bg-negative-soft px-4 py-3 text-sm text-negative">
           {error}

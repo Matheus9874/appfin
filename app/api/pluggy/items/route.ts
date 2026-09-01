@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
 import { getPluggyClient } from "@/lib/pluggy";
 import { syncPluggyItem } from "@/lib/pluggySync";
+import { garantirWebhooksRegistrados } from "@/lib/pluggyWebhook";
 import { revalidateFinancialPaths } from "@/lib/revalidateFinancialPaths";
 
 // Trial Pluggy clients only allow item creation through connector 200
@@ -63,6 +64,15 @@ export async function POST(request: Request) {
     });
 
     const resultado = await syncPluggyItem(userId, pluggyItem);
+
+    // Best-effort: se APP_URL/PLUGGY_WEBHOOK_SECRET não estiverem
+    // configurados (ex.: ambiente local), não deve quebrar a conexão — só
+    // significa que a sincronização automática fica desativada.
+    try {
+      await garantirWebhooksRegistrados();
+    } catch (error) {
+      console.error("Pluggy: erro ao registrar webhook.", error);
+    }
 
     revalidateFinancialPaths();
     revalidatePath("/contas-conectadas");
