@@ -80,7 +80,11 @@ export default function ConnectedAccountsClient({
         );
         setConexoes((atual) => [
           {
-            id: crypto.randomUUID(),
+            // Chave só pra essa renderização local — a lista real vem do
+            // banco no próximo carregamento da página. Evita depender de
+            // crypto.randomUUID(), que exige contexto seguro (HTTPS ou
+            // localhost) e falha ao acessar via IP de rede em HTTP.
+            id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             connectorName: result.connectorName,
             createdAt: new Date().toISOString(),
             lastSyncedAt: new Date().toISOString(),
