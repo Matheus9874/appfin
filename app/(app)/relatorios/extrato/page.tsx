@@ -1,18 +1,42 @@
-import { FileText } from "lucide-react";
-import ComingSoon from "../ComingSoon";
+import { prisma } from "@/lib/prisma";
+import { getCurrentUserId } from "@/lib/auth";
+import { paraDataLocal } from "@/lib/dateLocal";
 import ReportHeader from "../ReportHeader";
+import ExtratoClient from "./ExtratoClient";
 
-export default function ExtratoPage() {
+function formatData(data: Date) {
+  return new Intl.DateTimeFormat("pt-BR").format(data);
+}
+
+export default async function ExtratoPage() {
+  const userId = await getCurrentUserId();
+  const transactions = await prisma.transaction.findMany({
+    where: { userId },
+    orderBy: { data: "desc" },
+    include: { category: true },
+  });
+
+  const linhas = transactions.map((t) => ({
+    id: t.id,
+    tipo: t.tipo,
+    valor: Number(t.valor),
+    categoryNome: t.category.nome,
+    descricao: t.descricao,
+    dataFormatada: formatData(t.data),
+    dataISO: paraDataLocal(t.data),
+    origem: t.origem,
+    meioPagamento: t.meioPagamento,
+    natureza: t.natureza,
+    transferenciaInterna: t.transferenciaInterna,
+  }));
+
   return (
     <div className="flex flex-col gap-8">
       <ReportHeader
         title="Extrato de Transações"
-        description="Um extrato completo e filtrável de todas as suas transações, pronto para exportar."
+        description="Veja e exporte suas transações de um mês específico em CSV."
       />
-      <ComingSoon
-        icon={FileText}
-        message="Em breve você poderá gerar e exportar um extrato completo das suas transações."
-      />
+      <ExtratoClient transactions={linhas} />
     </div>
   );
 }

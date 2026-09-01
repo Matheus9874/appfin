@@ -9,6 +9,7 @@ const PROTECTED_PREFIXES = [
   "/metas",
   "/relatorios",
   "/assistente",
+  "/contas-conectadas",
 ];
 
 export async function proxy(request: NextRequest) {

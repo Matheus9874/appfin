@@ -1,8 +1,9 @@
-import { PiggyBank, ShieldCheck, Wallet } from "lucide-react";
+import { PiggyBank, ShieldCheck, Sparkles, Wallet } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
 import { getMonthlyTotals } from "@/lib/monthlyTotals";
 import { getCurrentInvestments } from "@/lib/currentInvestments";
+import { paraDataLocal } from "@/lib/dateLocal";
 import { INVESTMENT_TYPES, INVESTMENT_TYPE_ICONS, INVESTMENT_TYPE_LABELS } from "@/lib/investmentTypes";
 import StatCard from "../dashboard/StatCard";
 import InfoTooltip from "@/app/components/InfoTooltip";
@@ -173,7 +174,15 @@ export default async function ReservaInvestimentosPage() {
                         {inv.instituicao}
                       </td>
                       <td className="px-6 py-4 text-muted">
-                        {inv.nome ?? "—"}
+                        <div className="flex items-center gap-2">
+                          <span>{inv.nome ?? "—"}</span>
+                          {inv.origem === "PLUGGY" && (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                              <Sparkles size={10} />
+                              Auto
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right font-medium tabular-nums">
                         {formatMoeda(Number(inv.valor))}
@@ -189,7 +198,7 @@ export default async function ReservaInvestimentosPage() {
                             instituicao: inv.instituicao,
                             nome: inv.nome,
                             valor: Number(inv.valor),
-                            dataISO: inv.data.toISOString().slice(0, 10),
+                            dataISO: paraDataLocal(inv.data),
                           }}
                         />
                       </td>

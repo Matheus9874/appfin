@@ -39,6 +39,7 @@ export default function InvestmentRowActions({
   investment: InvestmentData;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [instituicaoSelecionada, setInstituicaoSelecionada] = useState(
     INSTITUICOES_CONHECIDAS.has(investment.instituicao)
@@ -51,12 +52,19 @@ export default function InvestmentRowActions({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
     const formData = new FormData(e.currentTarget);
-    await updateInvestmentEntry(formData);
-    setIsEditing(false);
+    try {
+      await updateInvestmentEntry(formData);
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function handleDelete() {
+    if (isDeleting) return;
     const nomeExibicao = investment.nome
       ? `${investment.instituicao} — ${investment.nome}`
       : investment.instituicao;
@@ -64,8 +72,11 @@ export default function InvestmentRowActions({
     setIsDeleting(true);
     const formData = new FormData();
     formData.set("id", investment.id);
-    await deleteInvestmentEntry(formData);
-    setIsDeleting(false);
+    try {
+      await deleteInvestmentEntry(formData);
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -219,9 +230,10 @@ export default function InvestmentRowActions({
               </button>
               <button
                 type="submit"
-                className="rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                disabled={isSaving}
+                className="rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Salvar
+                {isSaving ? "Salvando..." : "Salvar"}
               </button>
             </div>
           </form>

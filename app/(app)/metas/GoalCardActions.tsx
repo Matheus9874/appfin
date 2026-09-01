@@ -27,22 +27,33 @@ export default function GoalCardActions({
   investimentosDisponiveis: InvestmentOption[];
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
     const formData = new FormData(e.currentTarget);
-    await updateGoal(formData);
-    setIsEditing(false);
+    try {
+      await updateGoal(formData);
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function handleDelete() {
+    if (isDeleting) return;
     if (!confirm(`Excluir a meta "${goal.nome}"?`)) return;
     setIsDeleting(true);
     const formData = new FormData();
     formData.set("id", goal.id);
-    await deleteGoal(formData);
-    setIsDeleting(false);
+    try {
+      await deleteGoal(formData);
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -145,9 +156,10 @@ export default function GoalCardActions({
               </button>
               <button
                 type="submit"
-                className="rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                disabled={isSaving}
+                className="rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Salvar
+                {isSaving ? "Salvando..." : "Salvar"}
               </button>
             </div>
           </form>

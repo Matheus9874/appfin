@@ -41,6 +41,8 @@ export async function createInvestmentEntry(formData: FormData) {
   });
 
   revalidatePath("/reserva-investimentos");
+  revalidatePath("/metas");
+  revalidatePath("/dashboard");
 }
 
 export async function updateInvestmentEntry(formData: FormData) {

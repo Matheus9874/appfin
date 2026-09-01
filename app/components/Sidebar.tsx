@@ -5,6 +5,7 @@ import {
   Bot,
   FileBarChart,
   HelpCircle,
+  Landmark,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -17,6 +18,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Logo from "./Logo";
 import LogoutButton from "./LogoutButton";
+import SyncPluggyButton from "./SyncPluggyButton";
 
 type NavItem = {
   href: string;
@@ -31,7 +33,14 @@ const NAV_ITEMS: NavItem[] = [
     href: "/transacoes",
     label: "Transações",
     icon: ArrowLeftRight,
-    children: [{ href: "/categorias", label: "Categorias", icon: Tags }],
+    children: [
+      { href: "/categorias", label: "Categorias", icon: Tags },
+      {
+        href: "/contas-conectadas",
+        label: "Contas Conectadas",
+        icon: Landmark,
+      },
+    ],
   },
   {
     href: "/reserva-investimentos",
@@ -160,6 +169,7 @@ export default function Sidebar({
       </nav>
 
       <div className="flex flex-col gap-1 border-t border-border pt-2">
+        <SyncPluggyButton collapsed={collapsed} />
         <button
           type="button"
           onClick={onOpenTutorial}

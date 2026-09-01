@@ -1,11 +1,14 @@
 "use client";
 
-import { Pencil, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Pencil, Trash2, Undo2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Modal from "@/app/components/Modal";
 import { deleteTransaction, updateTransaction } from "../actions";
 import { NOVA_CATEGORIA_VALUE } from "@/lib/constants";
 import type { TipoTransacao } from "@/app/generated/prisma/enums";
+
+/** Janela pra desfazer a exclusão antes dela ser efetivada de verdade. */
+const DESFAZER_EXCLUSAO_MS = 5000;
 
 type Category = {
   id: string;
@@ -34,9 +37,11 @@ export default function TransactionRowActions({
   categories: Category[];
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
   const [tipo, setTipo] = useState(transaction.tipo);
   const [categoryId, setCategoryId] = useState(transaction.categoryId);
+  const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const categoriasDoTipo = useMemo(
     () => categories.filter((c) => c.tipo === tipo),
@@ -47,39 +52,84 @@ export default function TransactionRowActions({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
     const formData = new FormData(e.currentTarget);
-    await updateTransaction(formData);
-    setIsEditing(false);
+    try {
+      await updateTransaction(formData);
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
-  async function handleDelete() {
-    if (!confirm(`Excluir a transação "${transaction.descricao}"?`)) return;
-    setIsDeleting(true);
+  async function commitDelete() {
     const formData = new FormData();
     formData.set("id", transaction.id);
     await deleteTransaction(formData);
-    setIsDeleting(false);
   }
+
+  function handleDeleteClick() {
+    if (pendingDelete) return;
+    if (!confirm(`Excluir a transação "${transaction.descricao}"?`)) return;
+    setPendingDelete(true);
+    deleteTimeoutRef.current = setTimeout(() => {
+      deleteTimeoutRef.current = null;
+      commitDelete();
+    }, DESFAZER_EXCLUSAO_MS);
+  }
+
+  function handleUndoDelete() {
+    if (deleteTimeoutRef.current) {
+      clearTimeout(deleteTimeoutRef.current);
+      deleteTimeoutRef.current = null;
+    }
+    setPendingDelete(false);
+  }
+
+  // Se a linha sumir da lista antes da janela acabar (ex.: troca de aba ou
+  // filtro), honra a exclusão já confirmada em vez de perder a ação por
+  // causa do desmonte do componente.
+  useEffect(() => {
+    return () => {
+      if (deleteTimeoutRef.current) {
+        clearTimeout(deleteTimeoutRef.current);
+        commitDelete();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex items-center justify-end gap-1">
       <button
         type="button"
         onClick={() => setIsEditing(true)}
+        disabled={pendingDelete}
         title="Editar transação"
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Pencil size={16} />
       </button>
-      <button
-        type="button"
-        onClick={handleDelete}
-        disabled={isDeleting}
-        title="Excluir transação"
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-negative-soft hover:text-negative disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <Trash2 size={16} />
-      </button>
+      {pendingDelete ? (
+        <button
+          type="button"
+          onClick={handleUndoDelete}
+          title="Desfazer exclusão"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-accent transition-colors hover:bg-accent-soft"
+        >
+          <Undo2 size={16} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={handleDeleteClick}
+          title="Excluir transação"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-negative-soft hover:text-negative"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
 
       {isEditing && (
         <Modal title="Editar transação" onClose={() => setIsEditing(false)}>
@@ -222,9 +272,10 @@ export default function TransactionRowActions({
               </button>
               <button
                 type="submit"
-                className="rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                disabled={isSaving}
+                className="rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Salvar
+                {isSaving ? "Salvando..." : "Salvar"}
               </button>
             </div>
           </form>

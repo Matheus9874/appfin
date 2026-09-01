@@ -2,6 +2,8 @@
 
 import { Plus } from "lucide-react";
 import { useState } from "react";
+import SubmitButton from "@/app/components/SubmitButton";
+import { useGuardedAction } from "@/lib/useGuardedAction";
 import { createCategory } from "./actions";
 import type { TipoTransacao } from "@/app/generated/prisma/enums";
 
@@ -11,10 +13,11 @@ const controlClass =
 
 export default function CategoryForm() {
   const [tipo, setTipo] = useState<TipoTransacao>("DESPESA");
+  const handleCreate = useGuardedAction(createCategory);
 
   return (
     <form
-      action={createCategory}
+      action={handleCreate}
       className="grid grid-cols-1 gap-4 rounded-2xl border border-border bg-surface p-6 shadow-sm sm:grid-cols-2 lg:grid-cols-4"
     >
       <div className="flex flex-col gap-1.5">
@@ -66,13 +69,13 @@ export default function CategoryForm() {
       )}
 
       <div className="flex items-end">
-        <button
-          type="submit"
-          className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+        <SubmitButton
+          pendingText="Adicionando..."
+          className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Plus size={16} />
           Adicionar categoria
-        </button>
+        </SubmitButton>
       </div>
     </form>
   );

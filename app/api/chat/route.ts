@@ -26,7 +26,7 @@ async function buildFinancialContext(userId: string) {
 
   const [transactions, goals, investimentos] = await Promise.all([
     prisma.transaction.findMany({
-      where: { userId, data: { gte: inicioJanela } },
+      where: { userId, data: { gte: inicioJanela }, transferenciaInterna: false },
       include: { category: true },
       orderBy: { data: "asc" },
     }),

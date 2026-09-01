@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
+import { paraDataLocal } from "@/lib/dateLocal";
 import TransactionForm from "./TransactionForm";
 import TransactionsTable from "./TransactionsTable";
 
@@ -24,10 +25,13 @@ export default async function TransacoesPage() {
     valor: Number(t.valor),
     categoryId: t.categoryId,
     categoryNome: t.category.nome,
-    categoryNatureza: t.category.natureza,
     descricao: t.descricao,
     dataFormatada: formatData(t.data),
-    dataISO: t.data.toISOString().slice(0, 10),
+    dataISO: paraDataLocal(t.data),
+    origem: t.origem,
+    meioPagamento: t.meioPagamento,
+    natureza: t.natureza,
+    transferenciaInterna: t.transferenciaInterna,
   }));
 
   return (

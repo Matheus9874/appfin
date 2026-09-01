@@ -2,8 +2,11 @@
 
 import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
+import SubmitButton from "@/app/components/SubmitButton";
+import { useGuardedAction } from "@/lib/useGuardedAction";
 import { createTransaction } from "../actions";
 import { NOVA_CATEGORIA_VALUE } from "@/lib/constants";
+import { paraDataLocal } from "@/lib/dateLocal";
 import type { TipoTransacao } from "@/app/generated/prisma/enums";
 
 type Category = {
@@ -23,6 +26,7 @@ export default function TransactionForm({
 }) {
   const [tipo, setTipo] = useState<TipoTransacao>("DESPESA");
   const [categoryId, setCategoryId] = useState("");
+  const handleCreate = useGuardedAction(createTransaction);
 
   const categoriasDoTipo = useMemo(
     () => categories.filter((c) => c.tipo === tipo),
@@ -33,7 +37,7 @@ export default function TransactionForm({
 
   return (
     <form
-      action={createTransaction}
+      action={handleCreate}
       className="grid grid-cols-1 gap-4 rounded-2xl border border-border bg-surface p-6 shadow-sm sm:grid-cols-2 lg:grid-cols-3"
     >
       <div className="flex flex-col gap-1.5">
@@ -150,20 +154,20 @@ export default function TransactionForm({
           id="data"
           name="data"
           type="date"
-          defaultValue={new Date().toISOString().slice(0, 10)}
+          defaultValue={paraDataLocal(new Date())}
           required
           className={controlClass}
         />
       </div>
 
       <div className="flex items-end sm:col-span-2 lg:col-span-3">
-        <button
-          type="submit"
-          className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+        <SubmitButton
+          pendingText="Adicionando..."
+          className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Plus size={16} />
           Adicionar transação
-        </button>
+        </SubmitButton>
       </div>
     </form>
   );

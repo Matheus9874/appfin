@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
 import { getCurrentInvestments, investmentKey } from "@/lib/currentInvestments";
 import { calcularProgressoMeta } from "@/lib/goalProgress";
+import { paraDataLocal } from "@/lib/dateLocal";
 import GoalForm from "./GoalForm";
 import GoalCardActions from "./GoalCardActions";
 
@@ -107,7 +108,7 @@ export default async function MetasPage() {
                         id: goal.id,
                         nome: goal.nome,
                         valorAlvo: progresso.valorAlvo,
-                        prazoISO: goal.prazo.toISOString().slice(0, 10),
+                        prazoISO: paraDataLocal(goal.prazo),
                         investmentId: investmentIdAtual,
                       }}
                       investimentosDisponiveis={investimentosParaSelecao}

@@ -17,7 +17,7 @@ export default async function GastosPorCategoriaPage() {
   const userId = await getCurrentUserId();
   const despesasPorCategoria = await prisma.transaction.groupBy({
     by: ["categoryId"],
-    where: { userId, tipo: "DESPESA" },
+    where: { userId, tipo: "DESPESA", transferenciaInterna: false },
     _sum: { valor: true },
   });
 

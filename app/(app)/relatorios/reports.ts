@@ -54,9 +54,9 @@ export const REPORTS: ReportDefinition[] = [
     slug: "extrato",
     title: "Extrato de Transações",
     description:
-      "Um extrato completo e filtrável de todas as suas transações, pronto para exportar.",
+      "Veja e exporte suas transações de um mês específico em CSV.",
     icon: FileText,
-    status: "em-breve",
+    status: "disponivel",
   },
 ];
 

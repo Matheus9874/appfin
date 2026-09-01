@@ -7,11 +7,11 @@ export type MonthlyTotal = {
   despesas: number;
 };
 
-function monthKey(data: Date) {
+export function monthKey(data: Date) {
   return `${data.getFullYear()}-${data.getMonth()}`;
 }
 
-function monthLabel(data: Date) {
+export function monthLabel(data: Date) {
   const mes = new Intl.DateTimeFormat("pt-BR", { month: "short" })
     .format(data)
     .replace(".", "");
@@ -63,7 +63,7 @@ export async function getMonthlyTotals(
   }
 
   const transacoesDaJanela = await prisma.transaction.findMany({
-    where: { userId, data: { gte: inicioDaJanela } },
+    where: { userId, data: { gte: inicioDaJanela }, transferenciaInterna: false },
     select: { tipo: true, valor: true, data: true },
   });
 
