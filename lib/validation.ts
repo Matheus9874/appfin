@@ -9,11 +9,16 @@ export function requireNonEmpty(raw: string, label: string): string {
 }
 
 function parseFiniteNumber(raw: string, label: string): number {
-  const trimmed = raw.trim().replace(",", ".");
+  const trimmed = raw.trim();
   if (!trimmed) {
     throw new Error(`${label} é obrigatório.`);
   }
-  const value = Number(trimmed);
+  // Accepts both plain ("1500.5") and Brazilian ("1.500,50") number formats —
+  // mobile numeric keypads under a pt-BR locale insert "," for decimals.
+  const normalized = trimmed.includes(",")
+    ? trimmed.replace(/\./g, "").replace(",", ".")
+    : trimmed;
+  const value = Number(normalized);
   if (!Number.isFinite(value)) {
     throw new Error(`${label} deve ser um número válido.`);
   }

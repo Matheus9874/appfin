@@ -187,9 +187,8 @@ export default function InvestmentRowActions({
               <input
                 id="edit-inv-valor"
                 name="valor"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 defaultValue={investment.valor}
                 required
                 className={controlClass}

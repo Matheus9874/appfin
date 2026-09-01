@@ -116,9 +116,8 @@ export default function TransactionRowActions({
               <input
                 id="edit-valor"
                 name="valor"
-                type="number"
-                step="0.01"
-                min="0"
+                type="text"
+                inputMode="decimal"
                 defaultValue={transaction.valor}
                 required
                 className={controlClass}

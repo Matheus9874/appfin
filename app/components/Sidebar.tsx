@@ -2,7 +2,9 @@
 
 import {
   ArrowLeftRight,
+  Bot,
   FileBarChart,
+  HelpCircle,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -38,6 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/metas", label: "Metas", icon: Target },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
+  { href: "/assistente", label: "Assistente", icon: Bot },
 ];
 
 export default function Sidebar({
@@ -45,11 +48,13 @@ export default function Sidebar({
   onToggleCollapsed,
   mobileOpen,
   onCloseMobile,
+  onOpenTutorial,
 }: {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  onOpenTutorial: () => void;
 }) {
   const pathname = usePathname();
 
@@ -154,7 +159,18 @@ export default function Sidebar({
         })}
       </nav>
 
-      <div className="border-t border-border pt-2">
+      <div className="flex flex-col gap-1 border-t border-border pt-2">
+        <button
+          type="button"
+          onClick={onOpenTutorial}
+          title={collapsed ? "Como usar" : undefined}
+          className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-foreground ${
+            collapsed ? "md:justify-center md:px-0" : ""
+          }`}
+        >
+          <HelpCircle size={18} className="shrink-0" />
+          <span className={collapsed ? "md:hidden" : ""}>Como usar</span>
+        </button>
         <LogoutButton collapsed={collapsed} />
       </div>
     </aside>

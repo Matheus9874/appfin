@@ -26,7 +26,11 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      const destino = new URL(next, origin);
+      // Lets the app know this page load follows a fresh login, so it can
+      // show the onboarding tutorial — see AppShell.tsx.
+      destino.searchParams.set("justLoggedIn", "1");
+      return NextResponse.redirect(destino);
     }
   }
 

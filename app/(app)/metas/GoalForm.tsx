@@ -52,9 +52,9 @@ export default function GoalForm({
         <input
           id="valorAlvo"
           name="valorAlvo"
-          type="number"
-          min="0"
-          step="0.01"
+          type="text"
+          inputMode="decimal"
+          placeholder="0,00"
           required
           className={controlClass}
         />

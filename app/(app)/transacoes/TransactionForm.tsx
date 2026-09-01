@@ -63,9 +63,9 @@ export default function TransactionForm({
         <input
           id="valor"
           name="valor"
-          type="number"
-          step="0.01"
-          min="0"
+          type="text"
+          inputMode="decimal"
+          placeholder="0,00"
           required
           className={controlClass}
         />

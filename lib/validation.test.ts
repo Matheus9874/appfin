@@ -30,6 +30,10 @@ describe("parsePositiveNumber", () => {
     expect(parsePositiveNumber("150,50", "Valor")).toBe(150.5);
   });
 
+  it("accepts Brazilian format with a thousands separator", () => {
+    expect(parsePositiveNumber("1.500,50", "Valor")).toBe(1500.5);
+  });
+
   it("rejects empty input", () => {
     expect(() => parsePositiveNumber("", "Valor")).toThrow(
       "Valor é obrigatório.",

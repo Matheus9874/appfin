@@ -19,6 +19,7 @@ model User {
   investments  Investment[]
   goals        Goal[]
   categories   Category[]
+  chatMessages ChatMessage[]
 }
 
 enum TipoTransacao {
@@ -93,4 +94,20 @@ model Goal {
   investment   Investment? @relation(fields: [investmentId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      ChatRole
+  content   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
 }

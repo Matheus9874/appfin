@@ -94,9 +94,8 @@ export default function GoalCardActions({
               <input
                 id="edit-goal-valorAlvo"
                 name="valorAlvo"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 defaultValue={goal.valorAlvo}
                 required
                 className={controlClass}

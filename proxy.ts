@@ -8,6 +8,7 @@ const PROTECTED_PREFIXES = [
   "/reserva-investimentos",
   "/metas",
   "/relatorios",
+  "/assistente",
 ];
 
 export async function proxy(request: NextRequest) {

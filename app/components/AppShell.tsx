@@ -4,14 +4,17 @@ import { Menu } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import OnboardingTutorial from "./OnboardingTutorial";
 import Sidebar from "./Sidebar";
 import ThemeToggle from "./ThemeToggle";
 
 const STORAGE_KEY = "rumofin:sidebar-collapsed";
+const ONBOARDING_STORAGE_KEY = "rumofin:onboarding-dismissed";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -20,8 +23,32 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("justLoggedIn")) return;
+
+    params.delete("justLoggedIn");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (query ? `?${query}` : ""),
+    );
+
+    if (localStorage.getItem(ONBOARDING_STORAGE_KEY) !== "1") {
+      setTutorialOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  function closeTutorial(dontShowAgain: boolean) {
+    setTutorialOpen(false);
+    if (dontShowAgain) {
+      localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
+    }
+  }
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -38,7 +65,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
         onToggleCollapsed={toggleCollapsed}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
+        onOpenTutorial={() => setTutorialOpen(true)}
       />
+
+      {tutorialOpen && <OnboardingTutorial onClose={closeTutorial} />}
 
       {mobileOpen && (
         <div

@@ -117,9 +117,9 @@ export default function InvestmentForm() {
         <input
           id="valor"
           name="valor"
-          type="number"
-          min="0"
-          step="0.01"
+          type="text"
+          inputMode="decimal"
+          placeholder="0,00"
           required
           className={controlClass}
         />
