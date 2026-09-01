@@ -171,12 +171,21 @@ export async function syncPluggyItem(
    * Resolves a Pluggy category name to one of our Category rows, preferring
    * a keyword match against the user's existing categories (see
    * pluggyCategoryMapping.ts) over creating a new one — avoids piling up
-   * near-duplicates like "Restaurante" and "Restaurantes, bares e
+   * near-duplicates like "Restaurante" e "Restaurantes, bares e
    * lanchonetes" side by side.
+   *
+   * `evitarFuzzyMatch` desliga esse casamento por palavra-chave — usado
+   * para transferências internas (pagamento de fatura, aporte/resgate de
+   * investimento), cujo nome de categoria ("Pagamento de cartão de
+   * crédito" etc.) compartilha palavras com categorias de gasto real do
+   * usuário (ex.: "Cartão de Crédito") sem ser a mesma coisa. Sem isso, uma
+   * fatura paga podia cair silenciosamente dentro da categoria de compras
+   * no cartão.
    */
   async function resolveCategoryId(
     nomeCandidato: string,
     tipo: TipoTransacao,
+    evitarFuzzyMatch = false,
   ): Promise<string> {
     const chave = `${tipo}:${nomeCandidato}`;
     const cacheada = categoriaIdPorChave.get(chave);
@@ -190,13 +199,15 @@ export async function syncPluggyItem(
       return exata.id;
     }
 
-    const correspondencia = encontrarCategoriaCorrespondente(
-      nomeCandidato,
-      categoriasExistentes,
-    );
-    if (correspondencia) {
-      categoriaIdPorChave.set(chave, correspondencia.id);
-      return correspondencia.id;
+    if (!evitarFuzzyMatch) {
+      const correspondencia = encontrarCategoriaCorrespondente(
+        nomeCandidato,
+        categoriasExistentes,
+      );
+      if (correspondencia) {
+        categoriaIdPorChave.set(chave, correspondencia.id);
+        return correspondencia.id;
+      }
     }
 
     const nova = await prisma.category.create({
@@ -278,7 +289,12 @@ export async function syncPluggyItem(
     const tipo: TipoTransacao = t.type === "CREDIT" ? "RECEITA" : "DESPESA";
     const nomeCategoria =
       categoriasTraduzidas.get(t.categoryId ?? "") || t.category?.trim() || "Outros";
-    const categoryId = await resolveCategoryId(nomeCategoria, tipo);
+    const ehTransferenciaInterna = transferenciaInternaPorId.get(t.id) ?? false;
+    const categoryId = await resolveCategoryId(
+      nomeCategoria,
+      tipo,
+      ehTransferenciaInterna,
+    );
 
     linhas.push({
       userId,
@@ -295,7 +311,7 @@ export async function syncPluggyItem(
       natureza: null,
       // Categoria original preservada de propósito (não vira "Transferência
       // interna") — só este flag decide o que entra nas somas de saldo.
-      transferenciaInterna: transferenciaInternaPorId.get(t.id) ?? false,
+      transferenciaInterna: ehTransferenciaInterna,
     });
   }
 

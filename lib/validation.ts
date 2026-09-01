@@ -43,12 +43,27 @@ export function parseNonNegativeNumber(raw: string, label: string): number {
   return value;
 }
 
-/** Validates a required date field, returning the parsed Date. */
+const DATA_SOMENTE_DIA = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Validates a required date field, returning the parsed Date.
+ *
+ * `<input type="date">` always submits "YYYY-MM-DD" — `new Date(raw)`
+ * parses that specific format as UTC midnight per spec, which becomes the
+ * previous calendar day once read back in Brasília (UTC-3). Building the
+ * Date from its local year/month/day instead keeps it the same calendar
+ * day the user picked, consistent with how it's grouped/displayed
+ * elsewhere (lib/dateLocal.ts).
+ */
 export function parseRequiredDate(raw: string, label: string): Date {
-  if (!raw.trim()) {
+  const valor = raw.trim();
+  if (!valor) {
     throw new Error(`${label} é obrigatório.`);
   }
-  const date = new Date(raw);
+  const somenteDia = DATA_SOMENTE_DIA.exec(valor);
+  const date = somenteDia
+    ? new Date(Number(somenteDia[1]), Number(somenteDia[2]) - 1, Number(somenteDia[3]))
+    : new Date(valor);
   if (Number.isNaN(date.getTime())) {
     throw new Error(`${label} não é uma data válida.`);
   }
