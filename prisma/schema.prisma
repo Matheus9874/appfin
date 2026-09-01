@@ -13,16 +13,17 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  email          String          @unique
-  transactions   Transaction[]
-  investments    Investment[]
-  goals          Goal[]
-  categories     Category[]
-  chatMessages   ChatMessage[]
-  pluggyItems    PluggyItem[]
-  pluggyAccounts PluggyAccount[]
-  monthlyPlans   MonthlyPlan[]
+  id                   String                @id @default(cuid())
+  email                String                @unique
+  transactions         Transaction[]
+  investments          Investment[]
+  goals                Goal[]
+  categories           Category[]
+  chatMessages         ChatMessage[]
+  pluggyItems          PluggyItem[]
+  pluggyAccounts       PluggyAccount[]
+  monthlyPlans         MonthlyPlan[]
+  dismissedSuggestions DismissedSuggestion[]
 }
 
 enum TipoTransacao {
@@ -193,17 +194,35 @@ model PluggyAccount {
  * do "realizado" que é comparado com isso.
  */
 model MonthlyPlan {
-  id                     String   @id @default(cuid())
+  id                     String  @id @default(cuid())
   userId                 String
   mes                    Int
   ano                    Int
-  rendaPlanejada         Decimal  @db.Decimal(12, 2)
-  percentualEssencial    Decimal  @db.Decimal(5, 2)
-  percentualPessoal      Decimal  @db.Decimal(5, 2)
-  percentualReserva      Decimal  @db.Decimal(5, 2)
-  percentualInvestimento Decimal  @db.Decimal(5, 2)
-  user                   User     @relation(fields: [userId], references: [id])
+  rendaPlanejada         Decimal @db.Decimal(12, 2)
+  percentualEssencial    Decimal @db.Decimal(5, 2)
+  percentualPessoal      Decimal @db.Decimal(5, 2)
+  percentualReserva      Decimal @db.Decimal(5, 2)
+  percentualInvestimento Decimal @db.Decimal(5, 2)
+  user                   User    @relation(fields: [userId], references: [id])
 
   @@unique([userId, mes, ano])
+  @@index([userId])
+}
+
+/**
+ * Comerciante/descrição que o usuário já revisou em Planejamento >
+ * Classificar Fixo/Variável e decidiu que não é nem conta fixa nem
+ * variável relevante (ex.: uma compra única que só coincidiu de recorrer)
+ * — impede que ele volte a aparecer como sugestão a cada reanálise. `chave`
+ * é a mesma descrição normalizada usada em lib/fixedExpenseSuggestion.ts.
+ */
+model DismissedSuggestion {
+  id        String   @id @default(cuid())
+  userId    String
+  chave     String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, chave])
   @@index([userId])
 }

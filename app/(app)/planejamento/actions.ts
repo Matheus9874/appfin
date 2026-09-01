@@ -14,6 +14,27 @@ const NATUREZAS: NaturezaCusto[] = ["FIXO", "VARIAVEL"];
 const TOLERANCIA_SOMA_PERCENTUAL = 0.5;
 
 /**
+ * Marca um comerciante (descrição normalizada — ver
+ * lib/fixedExpenseSuggestion.ts) como "não é conta fixa nem variável
+ * relevante", pra parar de aparecer como sugestão nas próximas reanálises.
+ */
+export async function descartarSugestao(chave: string) {
+  if (!chave) {
+    throw new Error("Sugestão inválida.");
+  }
+
+  const userId = await getCurrentUserId();
+
+  await prisma.dismissedSuggestion.upsert({
+    where: { userId_chave: { userId, chave } },
+    update: {},
+    create: { userId, chave },
+  });
+
+  revalidatePath("/planejamento/classificacao");
+}
+
+/**
  * Aplica a classificação Fixo/Variável escolhida (sugerida ou ajustada pelo
  * usuário) nas transações do grupo — ver lib/fixedExpenseSuggestion.ts pra
  * sugestão que alimenta essa tela. É por transação (não por categoria):

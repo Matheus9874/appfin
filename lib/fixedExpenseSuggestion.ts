@@ -29,11 +29,40 @@ export function calcularCoeficienteVariacao(valores: number[]): number {
 }
 
 /**
- * Regra pura de sugestão, dados só os totais mensais em que o comerciante
- * teve gasto (meses sem gasto não entram no array). Separada da consulta ao
- * banco pra ser testável sem depender de dados reais.
+ * Comida e farmácia nunca viram sugestão de conta fixa, mesmo quando o
+ * valor bate por coincidência em 2 meses (ex.: pedir o mesmo prato duas
+ * vezes) — são compras de consumo, não uma conta recorrente de verdade.
  */
-export function sugerirNatureza(valoresPorMes: number[]): NaturezaCusto {
+const PALAVRAS_NUNCA_FIXO = [
+  "restaurante",
+  "lanchonete",
+  "bar",
+  "comida",
+  "alimenta",
+  "supermercado",
+  "mercado",
+  "farmacia",
+];
+
+export function ehCategoriaNuncaFixa(categoryNome: string): boolean {
+  const normalizado = categoryNome
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+  return PALAVRAS_NUNCA_FIXO.some((p) => normalizado.includes(p));
+}
+
+/**
+ * Regra pura de sugestão, dados só os totais mensais em que o comerciante
+ * teve gasto (meses sem gasto não entram no array) e a categoria do
+ * comerciante. Separada da consulta ao banco pra ser testável sem depender
+ * de dados reais.
+ */
+export function sugerirNatureza(
+  valoresPorMes: number[],
+  categoryNome: string,
+): NaturezaCusto {
+  if (ehCategoriaNuncaFixa(categoryNome)) return "VARIAVEL";
   if (valoresPorMes.length < MIN_MESES_COM_GASTO) return "VARIAVEL";
   return calcularCoeficienteVariacao(valoresPorMes) <= LIMITE_CV_FIXO
     ? "FIXO"
@@ -84,7 +113,8 @@ function resumirNaturezaAtual(
  * ver MEIOS_PAGAMENTO_ANALISADOS. Só entra quem aparece em pelo menos 2 dos
  * 3 meses; a partir daí, sugere Fixo quando o valor mensal é consistente
  * (variação ≤15%) e Variável quando não é — mesmo comerciante recorrente,
- * mas valor solto (ex.: restaurante, Uber) cai como Variável.
+ * mas valor solto (ex.: Uber) cai como Variável. Comida e farmácia nunca
+ * viram Fixo (ver ehCategoriaNuncaFixa), mesmo com valor consistente.
  */
 export async function sugerirContasRecorrentes(
   userId: string,
@@ -93,16 +123,23 @@ export async function sugerirContasRecorrentes(
   const inicioJanela = new Date(agora.getFullYear(), agora.getMonth() - 3, 1);
   const fimJanela = new Date(agora.getFullYear(), agora.getMonth(), 1);
 
-  const transacoes = await prisma.transaction.findMany({
-    where: {
-      userId,
-      tipo: "DESPESA",
-      transferenciaInterna: false,
-      meioPagamento: { in: MEIOS_PAGAMENTO_ANALISADOS },
-      data: { gte: inicioJanela, lt: fimJanela },
-    },
-    include: { category: { select: { nome: true } } },
-  });
+  const [transacoes, descartadas] = await Promise.all([
+    prisma.transaction.findMany({
+      where: {
+        userId,
+        tipo: "DESPESA",
+        transferenciaInterna: false,
+        meioPagamento: { in: MEIOS_PAGAMENTO_ANALISADOS },
+        data: { gte: inicioJanela, lt: fimJanela },
+      },
+      include: { category: { select: { nome: true } } },
+    }),
+    prisma.dismissedSuggestion.findMany({
+      where: { userId },
+      select: { chave: true },
+    }),
+  ]);
+  const chavesDescartadas = new Set(descartadas.map((d) => d.chave));
 
   type Grupo = {
     chave: string;
@@ -118,6 +155,7 @@ export async function sugerirContasRecorrentes(
   for (const t of transacoes) {
     const chave = normalizarDescricao(t.descricao);
     if (!chave || chave.length < 3) continue;
+    if (chavesDescartadas.has(chave)) continue;
 
     const mesKey = paraMesLocal(t.data);
     const atual = grupos.get(chave) ?? {
@@ -144,7 +182,7 @@ export async function sugerirContasRecorrentes(
         categoryNome: g.categoryNome,
         meioPagamento: g.meioPagamento,
         naturezaAtual: resumirNaturezaAtual(g.naturezas),
-        sugestao: sugerirNatureza(valoresPorMes),
+        sugestao: sugerirNatureza(valoresPorMes, g.categoryNome),
         mesesComGasto: valoresPorMes.length,
         valoresPorMes,
         transactionIds: g.transactionIds,

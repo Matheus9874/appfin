@@ -1,9 +1,9 @@
 "use client";
 
-import { Banknote, CheckCircle2, FileText, QrCode, RefreshCw } from "lucide-react";
+import { Banknote, CheckCircle2, FileText, QrCode, RefreshCw, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { confirmarNaturezaTransacoes } from "../actions";
+import { confirmarNaturezaTransacoes, descartarSugestao } from "../actions";
 import type { MeioPagamento, NaturezaCusto } from "@/app/generated/prisma/enums";
 
 type Sugestao = {
@@ -59,19 +59,26 @@ function LinhaConta({
   sugestao,
   confirmada,
   onConfirmar,
+  onDescartar,
 }: {
   sugestao: Sugestao;
   confirmada: boolean;
   onConfirmar: (transactionIds: string[], natureza: NaturezaCusto) => Promise<void>;
+  onDescartar: (chave: string) => Promise<void>;
 }) {
   const [escolha, setEscolha] = useState<NaturezaCusto>(sugestao.sugestao);
   const [isPending, startTransition] = useTransition();
+  const [isDescartando, startTransitionDescartar] = useTransition();
   const MeioIcon = sugestao.meioPagamento
     ? MEIO_PAGAMENTO_ICON[sugestao.meioPagamento]
     : undefined;
 
   function handleConfirmar() {
     startTransition(() => onConfirmar(sugestao.transactionIds, escolha));
+  }
+
+  function handleDescartar() {
+    startTransitionDescartar(() => onDescartar(sugestao.chave));
   }
 
   return (
@@ -115,14 +122,26 @@ function LinhaConta({
             Confirmado
           </span>
         ) : (
-          <button
-            type="button"
-            onClick={handleConfirmar}
-            disabled={isPending}
-            className="rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-3.5 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isPending ? "Confirmando..." : "Confirmar"}
-          </button>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleDescartar}
+              disabled={isPending || isDescartando}
+              title="Não é conta fixa nem variável relevante — some da lista e não volta a aparecer"
+              className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-negative-soft hover:text-negative disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <X size={14} />
+              {isDescartando ? "Descartando..." : "Descartar"}
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmar}
+              disabled={isPending || isDescartando}
+              className="rounded-lg bg-gradient-to-br from-[#2563eb] to-[#7c3aed] px-3.5 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPending ? "Confirmando..." : "Confirmar"}
+            </button>
+          </div>
         )}
       </td>
     </tr>
@@ -137,26 +156,37 @@ export default function ClassificacaoClient({
   const router = useRouter();
   const [reanalisando, setReanalisando] = useState(false);
   const [confirmadas, setConfirmadas] = useState<Set<string>>(new Set());
+  const [descartadas, setDescartadas] = useState<Set<string>>(new Set());
   const [confirmandoTodas, startTransitionTodas] = useTransition();
   const [activeTab, setActiveTab] = useState<TabKey>("todas");
 
+  const sugestoesVisiveis = useMemo(
+    () => sugestoes.filter((s) => !descartadas.has(s.chave)),
+    [sugestoes, descartadas],
+  );
+
   const contagens = useMemo(
     () => ({
-      todas: sugestoes.length,
-      FIXO: sugestoes.filter((s) => s.sugestao === "FIXO").length,
-      VARIAVEL: sugestoes.filter((s) => s.sugestao === "VARIAVEL").length,
+      todas: sugestoesVisiveis.length,
+      FIXO: sugestoesVisiveis.filter((s) => s.sugestao === "FIXO").length,
+      VARIAVEL: sugestoesVisiveis.filter((s) => s.sugestao === "VARIAVEL").length,
     }),
-    [sugestoes],
+    [sugestoesVisiveis],
   );
 
   const sugestoesFiltradas = useMemo(() => {
-    if (activeTab === "todas") return sugestoes;
-    return sugestoes.filter((s) => s.sugestao === activeTab);
-  }, [sugestoes, activeTab]);
+    if (activeTab === "todas") return sugestoesVisiveis;
+    return sugestoesVisiveis.filter((s) => s.sugestao === activeTab);
+  }, [sugestoesVisiveis, activeTab]);
 
   async function confirmarUma(transactionIds: string[], natureza: NaturezaCusto) {
     await confirmarNaturezaTransacoes(transactionIds, natureza);
     setConfirmadas((atual) => new Set(atual).add(transactionIds.join(",")));
+  }
+
+  async function descartarUma(chave: string) {
+    await descartarSugestao(chave);
+    setDescartadas((atual) => new Set(atual).add(chave));
   }
 
   const restantesNaAba = sugestoesFiltradas.filter(
@@ -260,6 +290,7 @@ export default function ClassificacaoClient({
                   sugestao={s}
                   confirmada={confirmadas.has(s.transactionIds.join(","))}
                   onConfirmar={confirmarUma}
+                  onDescartar={descartarUma}
                 />
               ))}
             </tbody>
