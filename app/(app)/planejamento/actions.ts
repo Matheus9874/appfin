@@ -344,21 +344,19 @@ export type HistoricoItemContaFixa = {
 };
 
 /**
- * Transações dos últimos 3 meses (mês atual + 2 anteriores) que batem com
- * essa conta fixa nos dois critérios ao mesmo tempo: algum dos
- * destinatários/descrições já confirmados manualmente (ver
- * textosAprendidos) E valor dentro da faixa (valorMin–valorMax, ±5% por
- * padrão) — os dois juntos, não um ou outro, senão mistura transações de
- * outro destinatário que só coincidem no valor. Antes de listar, chama
- * persistirHistoricoAutomatico: qualquer mês que já bate nos dois
- * critérios vira vínculo oficial (FixedBillMatch) na hora, então tudo que
- * aparece aqui fora do que já estava vinculado deveria ser exatamente as
- * mesmas — não sobra "parecida, mas não vinculada" pra quem bate nos dois
- * critérios. Uma transação já oficialmente vinculada sempre aparece
- * também, mesmo que hoje esteja fora da faixa ou o texto tenha mudado
- * depois — é histórico confirmado. Sem nenhum texto aprendido ainda (conta
- * nunca confirmada manualmente), só mostra as já vinculadas
- * automaticamente por valor. Mais recente primeiro.
+ * Transações dos últimos 3 meses (mês atual + 2 anteriores) relacionadas a
+ * essa conta fixa: batendo nos dois critérios (algum dos
+ * destinatários/descrições já confirmados — ver textosAprendidos — E valor
+ * dentro da faixa) OU batendo em só um dos dois, OU já oficialmente
+ * vinculadas. Antes de listar, chama persistirHistoricoAutomatico: qualquer
+ * mês que já bate nos dois critérios vira vínculo oficial na hora, então
+ * tudo que aparece aqui como "vinculada" reflete isso; o que aparece só com
+ * um dos critérios (valor OU texto, não os dois) fica com `vinculada:
+ * false` — precisa de confirmação manual (ver vincularTransacaoHistorico)
+ * porque um critério isolado não garante que seja a mesma conta, mas
+ * precisa APARECER aqui pra dar pra confirmar; do contrário um formato de
+ * texto novo do mesmo estabelecimento nunca teria como ser descoberto.
+ * Mais recente primeiro.
  */
 export async function buscarHistoricoContaFixa(
   fixedBillId: string,
@@ -374,9 +372,7 @@ export async function buscarHistoricoContaFixa(
   }
 
   // Vincula de uma vez qualquer mês dos últimos 3 que já bate nos dois
-  // critérios mas ainda não tinha um FixedBillMatch, antes de listar — o
-  // histórico não deve mostrar como "parecida, mas não vinculada" algo que
-  // já bate nos dois critérios da própria conta.
+  // critérios mas ainda não tinha um FixedBillMatch, antes de listar.
   await persistirHistoricoAutomatico(userId, fixedBillId);
 
   const agora = new Date();
@@ -410,7 +406,7 @@ export async function buscarHistoricoContaFixa(
       const valorNum = Number(t.valor);
       const bateValor = valorNum >= valorMin && valorNum <= valorMax;
       const bateTexto = conta.textosAprendidos.includes(normalizarDescricao(t.descricao));
-      return (bateTexto && bateValor) || vinculadasIds.has(t.id);
+      return bateValor || bateTexto || vinculadasIds.has(t.id);
     })
     .map((t) => ({
       id: t.id,
@@ -427,6 +423,65 @@ export async function buscarHistoricoContaFixa(
   revalidatePath("/planejamento/contas-do-mes");
 
   return resultado;
+}
+
+/**
+ * Vincula manualmente, a partir do Histórico, uma transação de qualquer um
+ * dos últimos 3 meses que bate em só um dos dois critérios (só valor ou só
+ * destinatário) — usa o mês/ano da própria transação (não "agora"), soma o
+ * texto normalizado dela a textosAprendidos (aprende esse formato novo pra
+ * próxima vez) e roda persistirHistoricoAutomatico, que pode destravar
+ * outros meses que agora batem no padrão recém-aprendido.
+ */
+export async function vincularTransacaoHistorico(fixedBillId: string, transactionId: string) {
+  if (!fixedBillId || !transactionId) {
+    throw new Error("Dados inválidos.");
+  }
+  const userId = await getCurrentUserId();
+
+  const conta = await prisma.fixedBill.findFirst({ where: { id: fixedBillId, userId } });
+  if (!conta) {
+    throw new Error("Conta fixa não encontrada.");
+  }
+
+  const transacao = await prisma.transaction.findFirst({
+    where: { id: transactionId, userId, tipo: "DESPESA", transferenciaInterna: false },
+  });
+  if (!transacao) {
+    throw new Error("Transação não encontrada.");
+  }
+
+  const jaReivindicada = await prisma.fixedBillMatch.findUnique({ where: { transactionId } });
+  if (jaReivindicada && jaReivindicada.fixedBillId !== fixedBillId) {
+    throw new Error("Essa transação já está vinculada a outra conta fixa.");
+  }
+
+  const mes = transacao.data.getMonth() + 1;
+  const ano = transacao.data.getFullYear();
+
+  await prisma.fixedBillMatch.upsert({
+    where: { fixedBillId_mes_ano: { fixedBillId, mes, ano } },
+    update: { transactionId, status: "MANUAL" },
+    create: { fixedBillId, userId, mes, ano, transactionId, status: "MANUAL" },
+  });
+  await prisma.transaction.update({
+    where: { id: transactionId },
+    data: { natureza: "FIXO" },
+  });
+
+  const novoTexto = normalizarDescricao(transacao.descricao);
+  if (!conta.textosAprendidos.includes(novoTexto)) {
+    await prisma.fixedBill.update({
+      where: { id: fixedBillId },
+      data: { textosAprendidos: { push: novoTexto } },
+    });
+  }
+  await persistirHistoricoAutomatico(userId, fixedBillId);
+
+  revalidateFinancialPaths();
+  revalidatePath("/planejamento");
+  revalidatePath("/planejamento/contas-fixas");
+  revalidatePath("/planejamento/contas-do-mes");
 }
 
 /** Remove o vínculo do mês atual, sem desfazer a classificação da transação já feita. */

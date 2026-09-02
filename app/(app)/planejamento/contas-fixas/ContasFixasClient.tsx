@@ -22,6 +22,7 @@ import {
   desvincularContaFixa,
   excluirContaFixa,
   resolverManualmente,
+  vincularTransacaoHistorico,
 } from "../actions";
 
 type TransacaoResumo = {
@@ -604,9 +605,12 @@ function ModalHistoricoContaFixa({
   conta: ContaFixa;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
+  const [vinculandoId, setVinculandoId] = useState<string | null>(null);
+  const [erroVincular, setErroVincular] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelado = false;
@@ -627,12 +631,29 @@ function ModalHistoricoContaFixa({
     };
   }, [conta.id]);
 
+  async function handleVincular(transactionId: string) {
+    setErroVincular(null);
+    setVinculandoId(transactionId);
+    try {
+      await vincularTransacaoHistorico(conta.id, transactionId);
+      const resultado = await buscarHistoricoContaFixa(conta.id);
+      setHistorico(resultado);
+      router.refresh();
+    } catch (err) {
+      setErroVincular(err instanceof Error ? err.message : "Não foi possível vincular.");
+    } finally {
+      setVinculandoId(null);
+    }
+  }
+
   return (
     <Modal title={`Histórico · ${conta.nome}`} onClose={onClose}>
       <p className="mb-3 text-xs text-muted">
-        Transações dos últimos 3 meses do mesmo destinatário aprendido e com
-        valor dentro da faixa dessa conta — batendo nos dois critérios, já
-        são vinculadas automaticamente ao abrir esse histórico.
+        Transações dos últimos 3 meses parecidas com essa conta — mesmo
+        destinatário aprendido e/ou valor na faixa. Batendo nos dois
+        critérios, já vem vinculada automaticamente; batendo só um deles,
+        você confirma com &ldquo;Vincular&rdquo; (aprende esse formato novo
+        pra não precisar confirmar de novo).
       </p>
       {carregando ? (
         <p className="text-sm text-muted">Carregando...</p>
@@ -640,42 +661,47 @@ function ModalHistoricoContaFixa({
         <p className="text-sm text-negative">{erro}</p>
       ) : historico.length === 0 ? (
         <p className="text-sm text-muted">
-          Nenhuma transação do mesmo destinatário e faixa de valor nos
-          últimos 3 meses.
+          Nenhuma transação parecida com essa conta nos últimos 3 meses.
         </p>
       ) : (
-        <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
-          {historico.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
-            >
-              <div className="flex flex-col">
-                <span className="font-medium">{item.descricao}</span>
-                <span className="text-xs text-muted">
-                  {formatMoeda(item.valor)} · {item.dataFormatada} ·{" "}
-                  <span className="capitalize">{item.mesLabel}</span>
-                </span>
+        <div className="flex flex-col gap-2">
+          <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+            {historico.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
+              >
+                <div className="flex flex-col">
+                  <span className="font-medium">{item.descricao}</span>
+                  <span className="text-xs text-muted">
+                    {formatMoeda(item.valor)} · {item.dataFormatada} ·{" "}
+                    <span className="capitalize">{item.mesLabel}</span>
+                  </span>
+                </div>
+                {item.vinculada ? (
+                  <span
+                    title="Já vinculada a essa conta fixa"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive-soft px-2 py-0.5 text-xs font-medium text-positive"
+                  >
+                    <CheckCircle2 size={12} />
+                    Vinculada
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleVincular(item.id)}
+                    disabled={vinculandoId === item.id}
+                    title="Bate só um dos critérios — confirme se é a mesma conta"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <HelpCircle size={12} />
+                    {vinculandoId === item.id ? "Vinculando..." : "Vincular"}
+                  </button>
+                )}
               </div>
-              {item.vinculada ? (
-                <span
-                  title="Já vinculada a essa conta fixa"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive-soft px-2 py-0.5 text-xs font-medium text-positive"
-                >
-                  <CheckCircle2 size={12} />
-                  Vinculada
-                </span>
-              ) : (
-                <span
-                  title="Bate nos dois critérios, mas não foi vinculada automaticamente — o mês ou a transação já estão reivindicados por outro vínculo"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning"
-                >
-                  <HelpCircle size={12} />
-                  Conflito
-                </span>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
+          {erroVincular && <p className="text-xs text-negative">{erroVincular}</p>}
         </div>
       )}
     </Modal>
