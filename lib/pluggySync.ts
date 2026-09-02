@@ -353,6 +353,9 @@ export async function syncPluggyItem(
       // CPF/CNPJ da contraparte, quando disponível — usado como critério de
       // "mesmo destinatário" em Contas Fixas (ver lib/fixedBillMatching.ts).
       contraparteDocumento: extrairDocumentoContraparte(t),
+      // Marca de qual conexão essa transação veio — permite apagar
+      // seletivamente os dados de uma conexão específica ao desconectá-la.
+      pluggyItemId: pluggyItem.id,
     });
   }
 
@@ -388,6 +391,7 @@ export async function syncPluggyItem(
         nome: inv.name,
         valor: inv.balance,
         data: inv.date ? new Date(inv.date) : new Date(),
+        pluggyItemId: pluggyItem.id,
       },
       create: {
         userId,
@@ -398,6 +402,7 @@ export async function syncPluggyItem(
         data: inv.date ? new Date(inv.date) : new Date(),
         origem: "PLUGGY",
         pluggyInvestmentId: inv.id,
+        pluggyItemId: pluggyItem.id,
       },
     });
     investimentosSincronizados++;

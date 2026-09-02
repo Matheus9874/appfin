@@ -96,8 +96,14 @@ export async function POST(request: Request) {
  * esforço — se já não existir lá ou a chamada falhar, segue mesmo assim
  * pra garantir que o usuário sempre consiga se desconectar do próprio
  * ponto de vista) e remove o PluggyItem local, que em cascata remove as
- * PluggyAccount associadas. Não apaga transações/investimentos já
- * importados — eles continuam como histórico, só param de ser atualizados.
+ * PluggyAccount associadas.
+ *
+ * Por padrão NÃO apaga transações/investimentos já importados — eles
+ * continuam como histórico, só param de ser atualizados (o vínculo com a
+ * conexão é desfeito via SetNull). Se `apagarDados: true` vier no corpo,
+ * apaga também todas as Transaction/Investment dessa conexão específica
+ * (por pluggyItemId) antes de remover o PluggyItem — ação permanente,
+ * pedida explicitamente pelo usuário na tela.
  */
 export async function DELETE(request: Request) {
   let userId: string;
@@ -108,9 +114,11 @@ export async function DELETE(request: Request) {
   }
 
   let id: string;
+  let apagarDados: boolean;
   try {
     const body = await request.json();
     id = String(body?.id ?? "").trim();
+    apagarDados = body?.apagarDados === true;
   } catch {
     return NextResponse.json({ error: "Requisição inválida." }, { status: 400 });
   }
@@ -133,10 +141,21 @@ export async function DELETE(request: Request) {
     console.error("Pluggy: erro ao revogar item no Pluggy (seguindo com a remoção local).", error);
   }
 
+  let transacoesApagadas = 0;
+  let investimentosApagados = 0;
+  if (apagarDados) {
+    const [resultadoTransacoes, resultadoInvestimentos] = await Promise.all([
+      prisma.transaction.deleteMany({ where: { userId, pluggyItemId: pluggyItem.id } }),
+      prisma.investment.deleteMany({ where: { userId, pluggyItemId: pluggyItem.id } }),
+    ]);
+    transacoesApagadas = resultadoTransacoes.count;
+    investimentosApagados = resultadoInvestimentos.count;
+  }
+
   await prisma.pluggyItem.delete({ where: { id: pluggyItem.id } });
 
+  revalidateFinancialPaths();
   revalidatePath("/contas-conectadas");
-  revalidatePath("/dashboard");
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, transacoesApagadas, investimentosApagados });
 }

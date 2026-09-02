@@ -90,6 +90,15 @@ model Transaction {
   /// critério principal de "mesmo destinatário" em Contas Fixas (ver
   /// lib/fixedBillMatching.ts), mais estável que o texto da descrição.
   contraparteDocumento String?
+  /// De qual PluggyItem (conexão) essa transação veio — null pra
+  /// lançamentos manuais ou transações Pluggy importadas antes desse campo
+  /// existir. Permite apagar seletivamente só os dados de uma conexão
+  /// específica ao desconectá-la (ver app/api/pluggy/items/route.ts), sem
+  /// mexer nos dados de outras conexões do mesmo usuário. SetNull (não
+  /// Cascade): desconectar sem apagar dados é o padrão — só perde a
+  /// marcação de qual conexão originou a transação.
+  pluggyItemId         String?
+  pluggyItem           PluggyItem?     @relation(fields: [pluggyItemId], references: [id], onDelete: SetNull)
   user                 User            @relation(fields: [userId], references: [id])
   category             Category        @relation(fields: [categoryId], references: [id])
   fixedBillMatch       FixedBillMatch?
@@ -124,6 +133,10 @@ model Investment {
   /// lib/monthlyPlanActuals.ts) sem deixar de contar como o tipo original
   /// na distribuição por tipo.
   contaComoReserva   Boolean         @default(false)
+  /// De qual PluggyItem (conexão) esse investimento veio — mesma lógica de
+  /// Transaction.pluggyItemId.
+  pluggyItemId       String?
+  pluggyItem         PluggyItem?     @relation(fields: [pluggyItemId], references: [id], onDelete: SetNull)
   user               User            @relation(fields: [userId], references: [id])
   goals              Goal[]
 
@@ -168,6 +181,8 @@ model PluggyItem {
   lastSyncedAt   DateTime?
   user           User            @relation(fields: [userId], references: [id])
   pluggyAccounts PluggyAccount[]
+  transactions   Transaction[]
+  investments    Investment[]
 
   @@index([userId])
 }

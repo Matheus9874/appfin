@@ -1,9 +1,10 @@
 "use client";
 
-import { Building2, Landmark, RefreshCw, Unlink } from "lucide-react";
+import { AlertTriangle, Building2, Landmark, RefreshCw, Unlink } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import type { PluggyConnectProps } from "react-pluggy-connect";
+import Modal from "@/app/components/Modal";
 
 const PluggyConnect = dynamic(
   () => import("react-pluggy-connect").then((mod) => mod.PluggyConnect),
@@ -24,6 +25,8 @@ type Conexao = {
   connectorName: string;
   createdAt: string;
   lastSyncedAt: string | null;
+  transacoesCount: number;
+  investimentosCount: number;
 };
 
 function formatDataHora(iso: string) {
@@ -31,6 +34,94 @@ function formatDataHora(iso: string) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(iso));
+}
+
+function ModalDesconectar({
+  conexao,
+  onClose,
+  onConfirm,
+}: {
+  conexao: Conexao;
+  onClose: () => void;
+  onConfirm: (apagarDados: boolean) => Promise<void>;
+}) {
+  const [apagarDados, setApagarDados] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const temDados = conexao.transacoesCount > 0 || conexao.investimentosCount > 0;
+
+  async function handleConfirmar() {
+    setErro(null);
+    setConfirmando(true);
+    try {
+      await onConfirm(apagarDados);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível desconectar.");
+      setConfirmando(false);
+    }
+  }
+
+  return (
+    <Modal title={`Desconectar ${conexao.connectorName}`} onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-muted">
+          Isso revoga o acesso do app a essa conexão e para a sincronização
+          automática.
+        </p>
+
+        {temDados && (
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-background p-3">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={apagarDados}
+                onChange={(e) => setApagarDados(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border"
+              />
+              <span>
+                Também apagar permanentemente {conexao.transacoesCount}{" "}
+                transação(ões) e {conexao.investimentosCount}{" "}
+                investimento(s) importados por essa conexão.
+              </span>
+            </label>
+            {apagarDados && (
+              <p className="flex items-center gap-1.5 text-xs font-medium text-negative">
+                <AlertTriangle size={12} />
+                Essa ação não pode ser desfeita.
+              </p>
+            )}
+          </div>
+        )}
+
+        {erro && <p className="text-sm text-negative">{erro}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-hover"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmar}
+            disabled={confirmando}
+            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${
+              apagarDados ? "bg-negative" : "bg-gradient-to-br from-[#2563eb] to-[#7c3aed]"
+            }`}
+          >
+            {confirmando
+              ? "Desconectando..."
+              : apagarDados
+                ? "Desconectar e apagar dados"
+                : "Desconectar"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 export default function ConnectedAccountsClient({
@@ -42,7 +133,7 @@ export default function ConnectedAccountsClient({
   const [connectToken, setConnectToken] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [desconectandoId, setDesconectandoId] = useState<string | null>(null);
+  const [conexaoParaDesconectar, setConexaoParaDesconectar] = useState<Conexao | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -89,6 +180,8 @@ export default function ConnectedAccountsClient({
             connectorName: result.connectorName,
             createdAt: new Date().toISOString(),
             lastSyncedAt: new Date().toISOString(),
+            transacoesCount: result.transacoesImportadas ?? 0,
+            investimentosCount: result.investimentosImportados ?? 0,
           },
           ...atual,
         ]);
@@ -138,35 +231,25 @@ export default function ConnectedAccountsClient({
     }
   }
 
-  async function handleDisconnect(conexao: Conexao) {
-    if (
-      !confirm(
-        `Desconectar "${conexao.connectorName}"? As transações e investimentos já importados continuam salvos, mas a sincronização automática para.`,
-      )
-    ) {
-      return;
-    }
-    setDesconectandoId(conexao.id);
+  async function handleConfirmarDesconexao(conexao: Conexao, apagarDados: boolean) {
     setError(null);
     setMessage(null);
-    try {
-      const res = await fetch("/api/pluggy/items", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: conexao.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Não foi possível desconectar agora.");
-        return;
-      }
-      setMessage(`"${conexao.connectorName}" desconectado.`);
-      setConexoes((atual) => atual.filter((c) => c.id !== conexao.id));
-    } catch {
-      setError("Não foi possível conectar ao servidor. Tente novamente.");
-    } finally {
-      setDesconectandoId(null);
+    const res = await fetch("/api/pluggy/items", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: conexao.id, apagarDados }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error ?? "Não foi possível desconectar agora.");
     }
+    setMessage(
+      apagarDados
+        ? `"${conexao.connectorName}" desconectado — ${data.transacoesApagadas} transação(ões) e ${data.investimentosApagados} investimento(s) apagados.`
+        : `"${conexao.connectorName}" desconectado.`,
+    );
+    setConexoes((atual) => atual.filter((c) => c.id !== conexao.id));
+    setConexaoParaDesconectar(null);
   }
 
   return (
@@ -264,13 +347,12 @@ export default function ConnectedAccountsClient({
                   <td className="px-6 py-4 text-right">
                     <button
                       type="button"
-                      onClick={() => handleDisconnect(c)}
-                      disabled={desconectandoId === c.id}
+                      onClick={() => setConexaoParaDesconectar(c)}
                       title="Desconectar"
-                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-negative transition-colors hover:bg-negative-soft disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-negative transition-colors hover:bg-negative-soft"
                     >
                       <Unlink size={14} />
-                      {desconectandoId === c.id ? "Desconectando..." : "Desconectar"}
+                      Desconectar
                     </button>
                   </td>
                 </tr>
@@ -289,6 +371,16 @@ export default function ConnectedAccountsClient({
           onSuccess={onSuccess}
           onError={onError}
           onClose={onClose}
+        />
+      )}
+
+      {conexaoParaDesconectar && (
+        <ModalDesconectar
+          conexao={conexaoParaDesconectar}
+          onClose={() => setConexaoParaDesconectar(null)}
+          onConfirm={(apagarDados) =>
+            handleConfirmarDesconexao(conexaoParaDesconectar, apagarDados)
+          }
         />
       )}
     </div>

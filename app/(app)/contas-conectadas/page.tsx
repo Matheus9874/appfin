@@ -10,12 +10,22 @@ export default async function ContasConectadasPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  const conexoesIniciais = conexoes.map((c) => ({
-    id: c.id,
-    connectorName: c.connectorName,
-    createdAt: c.createdAt.toISOString(),
-    lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
-  }));
+  const conexoesIniciais = await Promise.all(
+    conexoes.map(async (c) => {
+      const [transacoesCount, investimentosCount] = await Promise.all([
+        prisma.transaction.count({ where: { userId, pluggyItemId: c.id } }),
+        prisma.investment.count({ where: { userId, pluggyItemId: c.id } }),
+      ]);
+      return {
+        id: c.id,
+        connectorName: c.connectorName,
+        createdAt: c.createdAt.toISOString(),
+        lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
+        transacoesCount,
+        investimentosCount,
+      };
+    }),
+  );
 
   return (
     <div className="flex flex-col gap-8">
