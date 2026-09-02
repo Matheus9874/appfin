@@ -123,6 +123,37 @@ export function ehTransferenciaParaPessoaFisica(t: PluggyPixSignal): boolean {
   return true;
 }
 
+export type PluggyContraparteSignal = {
+  type: "DEBIT" | "CREDIT";
+  merchant?: { cnpj?: string | null } | null;
+  paymentData?: {
+    payer?: PluggyPaymentParticipant | null;
+    receiver?: PluggyPaymentParticipant | null;
+  } | null;
+};
+
+/**
+ * CPF/CNPJ (só dígitos) da contraparte de uma transação — quem recebe, se é
+ * uma saída (DEBIT); quem envia, se é uma entrada (CREDIT). Prioriza o CNPJ
+ * do `merchant` enriquecido pelo Pluggy: achado em dado real que ele
+ * continua o mesmo entre lançamentos do mesmo estabelecimento mesmo quando
+ * o formato da descrição muda (ex.: "BANCO BRADESCO FINANCIAMENTOS SA" via
+ * débito direto num mês e "Pagamento Boleto BCO BRADESCO S.A." via boleto
+ * no outro — mesmo CNPJ do recebedor nos dois). Cai pro documento de
+ * `paymentData` quando `merchant` não vem preenchido (comum pra
+ * transações sem esse enriquecimento). null quando nenhum dos dois está
+ * disponível — usado como critério de "mesmo destinatário" pras Contas
+ * Fixas (ver lib/fixedBillMatching.ts), com o texto da descrição como
+ * fallback.
+ */
+export function extrairDocumentoContraparte(t: PluggyContraparteSignal): string | null {
+  const contraparte = t.type === "DEBIT" ? t.paymentData?.receiver : t.paymentData?.payer;
+  const documento = t.merchant?.cnpj ?? contraparte?.documentNumber?.value ?? null;
+  if (!documento) return null;
+  const digitos = documento.replace(/\D/g, "");
+  return digitos || null;
+}
+
 /**
  * Sinal primário — não depende de encontrar a outra ponta da transferência,
  * já é confiável sozinho (vem da própria classificação oficial do Pluggy).

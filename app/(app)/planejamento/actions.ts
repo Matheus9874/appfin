@@ -8,7 +8,7 @@ import {
   buscarEPersistirCorrespondencias,
   persistirHistoricoAutomatico,
 } from "@/lib/fixedBillService";
-import { normalizarDescricao } from "@/lib/fixedBillMatching";
+import { bateIdentidade, normalizarDescricao } from "@/lib/fixedBillMatching";
 import {
   parseNonNegativeNumber,
   parsePositiveNumber,
@@ -85,13 +85,15 @@ export async function buscarTransacoesCandidatas(valorMin: number, valorMax: num
  * Cria a conta fixa e, se `transactionIds` vier preenchido (o usuário
  * escolheu uma ou mais candidatas na tela antes de salvar — busca cobre os
  * últimos 3 meses), já vincula cada uma no mês da própria transação e
- * marca a transação como natureza FIXO. Aceita mais de uma transação de
- * propósito: um mesmo estabelecimento pode cobrar em mais de um formato de
- * texto (ex.: débito direto vs. boleto do mesmo banco) — escolher só uma
- * aprenderia só um padrão, deixando a outra variante sem reconhecer depois
- * (é o que motivou aceitar múltiplas aqui). Sem nenhuma candidata
- * escolhida, salva só a conta — fica pronta pra achar sozinha nos meses
- * seguintes.
+ * marca a transação como natureza FIXO. Aprende tanto o documento
+ * (CPF/CNPJ da contraparte, quando disponível — critério preferencial,
+ * estável entre formatos de descrição diferentes do mesmo estabelecimento)
+ * quanto o texto normalizado (fallback) de cada uma. Aceita mais de uma
+ * transação de propósito: um mesmo estabelecimento pode cobrar em mais de
+ * um formato sem um documento em comum identificável (ex.: lançamento
+ * manual) — escolher só uma aprenderia só um padrão, deixando a outra
+ * variante sem reconhecer depois. Sem nenhuma candidata escolhida, salva
+ * só a conta — fica pronta pra achar sozinha nos meses seguintes.
  */
 export async function criarContaFixa(formData: FormData) {
   const nome = requireNonEmpty(String(formData.get("nome") ?? ""), "Nome");
@@ -118,7 +120,12 @@ export async function criarContaFixa(formData: FormData) {
   const userId = await getCurrentUserId();
   await validarCategoriaOpcional(categoryId, userId);
 
-  let transacoesEscolhidas: { id: string; descricao: string; data: Date }[] = [];
+  let transacoesEscolhidas: {
+    id: string;
+    descricao: string;
+    data: Date;
+    contraparteDocumento: string | null;
+  }[] = [];
   if (transactionIds.length > 0) {
     transacoesEscolhidas = await prisma.transaction.findMany({
       where: {
@@ -150,9 +157,25 @@ export async function criarContaFixa(formData: FormData) {
   const textosAprendidos = [
     ...new Set(transacoesEscolhidas.map((t) => normalizarDescricao(t.descricao))),
   ];
+  const documentosAprendidos = [
+    ...new Set(
+      transacoesEscolhidas
+        .map((t) => t.contraparteDocumento)
+        .filter((d): d is string => d !== null),
+    ),
+  ];
 
   const conta = await prisma.fixedBill.create({
-    data: { userId, nome, valorEsperado, valorMin, valorMax, categoryId, textosAprendidos },
+    data: {
+      userId,
+      nome,
+      valorEsperado,
+      valorMin,
+      valorMax,
+      categoryId,
+      textosAprendidos,
+      documentosAprendidos,
+    },
   });
 
   if (transacoesEscolhidas.length > 0) {
@@ -265,7 +288,7 @@ export async function resolverManualmente(
     throw new Error("Conta fixa não encontrada.");
   }
 
-  let transacaoConfirmada: { descricao: string } | null = null;
+  let transacaoConfirmada: { descricao: string; contraparteDocumento: string | null } | null = null;
   if (transactionId) {
     transacaoConfirmada = await prisma.transaction.findFirst({
       where: {
@@ -274,7 +297,7 @@ export async function resolverManualmente(
         tipo: "DESPESA",
         transferenciaInterna: false,
       },
-      select: { descricao: true },
+      select: { descricao: true, contraparteDocumento: true },
     });
     if (!transacaoConfirmada) {
       throw new Error("Transação não encontrada.");
@@ -309,18 +332,24 @@ export async function resolverManualmente(
       where: { id: transactionId },
       data: { natureza: "FIXO" },
     });
-    // Aprende o padrão de texto dessa confirmação manual — acrescenta à
-    // lista em vez de substituir, já que o mesmo estabelecimento pode
-    // cobrar em mais de um formato (ex.: débito direto vs. boleto do
-    // mesmo banco). Junto com a faixa de valor, qualquer padrão da lista
-    // permite vincular automaticamente sem pedir confirmação de novo (ver
+    // Aprende o documento (CPF/CNPJ, critério preferencial) e o texto
+    // normalizado (fallback) dessa confirmação manual — acrescenta à lista
+    // em vez de substituir, já que o mesmo estabelecimento pode cobrar em
+    // mais de um formato (ex.: débito direto vs. boleto do mesmo banco).
+    // Junto com a faixa de valor, qualquer padrão da lista permite vincular
+    // automaticamente sem pedir confirmação de novo (ver
     // lib/fixedBillMatching.ts).
     const novoTexto = normalizarDescricao(transacaoConfirmada.descricao);
+    const novoDocumento = transacaoConfirmada.contraparteDocumento;
+    const data: { textosAprendidos?: { push: string }; documentosAprendidos?: { push: string } } = {};
     if (!conta.textosAprendidos.includes(novoTexto)) {
-      await prisma.fixedBill.update({
-        where: { id: fixedBillId },
-        data: { textosAprendidos: { push: novoTexto } },
-      });
+      data.textosAprendidos = { push: novoTexto };
+    }
+    if (novoDocumento && !conta.documentosAprendidos.includes(novoDocumento)) {
+      data.documentosAprendidos = { push: novoDocumento };
+    }
+    if (Object.keys(data).length > 0) {
+      await prisma.fixedBill.update({ where: { id: fixedBillId }, data });
     }
     // Com o padrão (re)aprendido, outros meses dos últimos 3 que já batem
     // nos dois critérios são vinculados de uma vez.
@@ -345,18 +374,18 @@ export type HistoricoItemContaFixa = {
 
 /**
  * Transações dos últimos 3 meses (mês atual + 2 anteriores) relacionadas a
- * essa conta fixa: batendo nos dois critérios (algum dos
- * destinatários/descrições já confirmados — ver textosAprendidos — E valor
- * dentro da faixa) OU batendo em só um dos dois, OU já oficialmente
- * vinculadas. Antes de listar, chama persistirHistoricoAutomatico: qualquer
- * mês que já bate nos dois critérios vira vínculo oficial na hora, então
- * tudo que aparece aqui como "vinculada" reflete isso; o que aparece só com
- * um dos critérios (valor OU texto, não os dois) fica com `vinculada:
- * false` — precisa de confirmação manual (ver vincularTransacaoHistorico)
- * porque um critério isolado não garante que seja a mesma conta, mas
- * precisa APARECER aqui pra dar pra confirmar; do contrário um formato de
- * texto novo do mesmo estabelecimento nunca teria como ser descoberto.
- * Mais recente primeiro.
+ * essa conta fixa: batendo nos dois critérios (identidade do destinatário
+ * já confirmada — documento ou texto, ver bateIdentidade — E valor dentro
+ * da faixa) OU batendo em só um dos dois, OU já oficialmente vinculadas.
+ * Antes de listar, chama persistirHistoricoAutomatico: qualquer mês que já
+ * bate nos dois critérios vira vínculo oficial na hora, então tudo que
+ * aparece aqui como "vinculada" reflete isso; o que aparece só com um dos
+ * critérios (valor OU identidade, não os dois) fica com `vinculada: false`
+ * — precisa de confirmação manual (ver vincularTransacaoHistorico) porque
+ * um critério isolado não garante que seja a mesma conta, mas precisa
+ * APARECER aqui pra dar pra confirmar; do contrário um formato novo do
+ * mesmo estabelecimento nunca teria como ser descoberto. Mais recente
+ * primeiro.
  */
 export async function buscarHistoricoContaFixa(
   fixedBillId: string,
@@ -387,7 +416,7 @@ export async function buscarHistoricoContaFixa(
         transferenciaInterna: false,
         data: { gte: inicio, lt: fim },
       },
-      select: { id: true, descricao: true, valor: true, data: true },
+      select: { id: true, descricao: true, valor: true, data: true, contraparteDocumento: true },
       orderBy: { data: "desc" },
     }),
     prisma.fixedBillMatch.findMany({
@@ -399,14 +428,26 @@ export async function buscarHistoricoContaFixa(
   const vinculadasIds = new Set(matchesDaConta.map((m) => m.transactionId));
   const valorMin = Number(conta.valorMin);
   const valorMax = Number(conta.valorMax);
+  const contaMatching = {
+    id: conta.id,
+    valorMin,
+    valorMax,
+    textosAprendidos: conta.textosAprendidos,
+    documentosAprendidos: conta.documentosAprendidos,
+  };
   const dataFormatter = new Intl.DateTimeFormat("pt-BR");
 
   const resultado = transacoes
     .filter((t) => {
       const valorNum = Number(t.valor);
       const bateValor = valorNum >= valorMin && valorNum <= valorMax;
-      const bateTexto = conta.textosAprendidos.includes(normalizarDescricao(t.descricao));
-      return bateValor || bateTexto || vinculadasIds.has(t.id);
+      const candidato = {
+        id: t.id,
+        valor: valorNum,
+        descricaoNormalizada: normalizarDescricao(t.descricao),
+        documento: t.contraparteDocumento,
+      };
+      return bateValor || bateIdentidade(candidato, contaMatching) || vinculadasIds.has(t.id);
     })
     .map((t) => ({
       id: t.id,
@@ -428,10 +469,11 @@ export async function buscarHistoricoContaFixa(
 /**
  * Vincula manualmente, a partir do Histórico, uma transação de qualquer um
  * dos últimos 3 meses que bate em só um dos dois critérios (só valor ou só
- * destinatário) — usa o mês/ano da própria transação (não "agora"), soma o
- * texto normalizado dela a textosAprendidos (aprende esse formato novo pra
- * próxima vez) e roda persistirHistoricoAutomatico, que pode destravar
- * outros meses que agora batem no padrão recém-aprendido.
+ * identidade do destinatário) — usa o mês/ano da própria transação (não
+ * "agora"), soma o documento (CPF/CNPJ) e/ou o texto normalizado dela às
+ * listas aprendidas (aprende esse formato novo pra próxima vez) e roda
+ * persistirHistoricoAutomatico, que pode destravar outros meses que agora
+ * batem no padrão recém-aprendido.
  */
 export async function vincularTransacaoHistorico(fixedBillId: string, transactionId: string) {
   if (!fixedBillId || !transactionId) {
@@ -470,11 +512,16 @@ export async function vincularTransacaoHistorico(fixedBillId: string, transactio
   });
 
   const novoTexto = normalizarDescricao(transacao.descricao);
+  const novoDocumento = transacao.contraparteDocumento;
+  const dadosAprendizado: { textosAprendidos?: { push: string }; documentosAprendidos?: { push: string } } = {};
   if (!conta.textosAprendidos.includes(novoTexto)) {
-    await prisma.fixedBill.update({
-      where: { id: fixedBillId },
-      data: { textosAprendidos: { push: novoTexto } },
-    });
+    dadosAprendizado.textosAprendidos = { push: novoTexto };
+  }
+  if (novoDocumento && !conta.documentosAprendidos.includes(novoDocumento)) {
+    dadosAprendizado.documentosAprendidos = { push: novoDocumento };
+  }
+  if (Object.keys(dadosAprendizado).length > 0) {
+    await prisma.fixedBill.update({ where: { id: fixedBillId }, data: dadosAprendizado });
   }
   await persistirHistoricoAutomatico(userId, fixedBillId);
 

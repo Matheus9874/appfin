@@ -1,5 +1,10 @@
 import { prisma } from "./prisma";
-import { buscarCorrespondencias, normalizarDescricao } from "./fixedBillMatching";
+import {
+  bateIdentidade,
+  buscarCorrespondencias,
+  normalizarDescricao,
+  temIdentidadeAprendida,
+} from "./fixedBillMatching";
 import type { FixedBillMatchStatus, NaturezaCusto } from "@/app/generated/prisma/enums";
 
 export type TransacaoResumo = {
@@ -58,7 +63,7 @@ export async function buscarEPersistirCorrespondencias(
         transferenciaInterna: false,
         data: { gte: inicio, lt: fim },
       },
-      select: { id: true, descricao: true, valor: true, data: true },
+      select: { id: true, descricao: true, valor: true, data: true, contraparteDocumento: true },
     }),
   ]);
 
@@ -76,11 +81,13 @@ export async function buscarEPersistirCorrespondencias(
       valorMin: Number(c.valorMin),
       valorMax: Number(c.valorMax),
       textosAprendidos: c.textosAprendidos,
+      documentosAprendidos: c.documentosAprendidos,
     })),
     poolDisponivel.map((t) => ({
       id: t.id,
       valor: Number(t.valor),
       descricaoNormalizada: normalizarDescricao(t.descricao),
+      documento: t.contraparteDocumento,
     })),
   );
 
@@ -166,12 +173,12 @@ export async function buscarEPersistirCorrespondencias(
 
 /**
  * Vincula automaticamente, nos últimos 3 meses, qualquer transação que já
- * bate nos dois critérios aprendidos da conta (valor na faixa E algum dos
- * destinatários/textos já confirmados) mas cujo mês ainda não tem um
- * FixedBillMatch — pra não deixar um mês passado batendo nos dois
- * critérios esperando um clique manual. Só faz algo se a conta já tiver
- * algum texto em textosAprendidos (sem nenhum padrão aprendido, não há o
- * que reconciliar aqui). Chamado ao criar/confirmar manualmente uma conta
+ * bate nos dois critérios aprendidos da conta (valor na faixa E identidade
+ * do destinatário — documento ou texto — já confirmada) mas cujo mês ainda
+ * não tem um FixedBillMatch — pra não deixar um mês passado batendo nos
+ * dois critérios esperando um clique manual. Só faz algo se a conta já
+ * tiver algo aprendido (sem nenhuma identidade aprendida, não há o que
+ * reconciliar aqui). Chamado ao criar/confirmar manualmente uma conta
  * fixa, ao abrir o histórico dela, e sempre que novas transações entram
  * (sync do Pluggy ou lançamento manual — ver reconciliarContasFixas).
  */
@@ -180,7 +187,16 @@ export async function persistirHistoricoAutomatico(
   fixedBillId: string,
 ): Promise<void> {
   const bill = await prisma.fixedBill.findFirst({ where: { id: fixedBillId, userId } });
-  if (!bill || bill.textosAprendidos.length === 0) return;
+  const contaMatching = bill
+    ? {
+        id: bill.id,
+        valorMin: Number(bill.valorMin),
+        valorMax: Number(bill.valorMax),
+        textosAprendidos: bill.textosAprendidos,
+        documentosAprendidos: bill.documentosAprendidos,
+      }
+    : null;
+  if (!bill || !contaMatching || !temIdentidadeAprendida(contaMatching)) return;
 
   const agora = new Date();
   const inicio = new Date(agora.getFullYear(), agora.getMonth() - 2, 1);
@@ -194,7 +210,7 @@ export async function persistirHistoricoAutomatico(
         transferenciaInterna: false,
         data: { gte: inicio, lt: fim },
       },
-      select: { id: true, descricao: true, valor: true, data: true },
+      select: { id: true, descricao: true, valor: true, data: true, contraparteDocumento: true },
     }),
     prisma.fixedBillMatch.findMany({ where: { fixedBillId }, select: { mes: true, ano: true } }),
     prisma.fixedBillMatch.findMany({
@@ -205,15 +221,18 @@ export async function persistirHistoricoAutomatico(
 
   const mesesResolvidos = new Set(matchesDaConta.map((m) => `${m.mes}-${m.ano}`));
   const claimedIds = new Set(matchesClaimedGeral.map((m) => m.transactionId));
-  const valorMin = Number(bill.valorMin);
-  const valorMax = Number(bill.valorMax);
 
   for (const t of transacoes) {
     if (claimedIds.has(t.id)) continue;
-    const valorNum = Number(t.valor);
-    const bateValor = valorNum >= valorMin && valorNum <= valorMax;
-    const bateTexto = bill.textosAprendidos.includes(normalizarDescricao(t.descricao));
-    if (!bateValor || !bateTexto) continue;
+    const candidato = {
+      id: t.id,
+      valor: Number(t.valor),
+      descricaoNormalizada: normalizarDescricao(t.descricao),
+      documento: t.contraparteDocumento,
+    };
+    const valorNum = candidato.valor;
+    const bateValor = valorNum >= contaMatching.valorMin && valorNum <= contaMatching.valorMax;
+    if (!bateValor || !bateIdentidade(candidato, contaMatching)) continue;
 
     const mes = t.data.getMonth() + 1;
     const ano = t.data.getFullYear();

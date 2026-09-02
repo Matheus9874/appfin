@@ -10,6 +10,7 @@ import {
   ehMovimentacaoDeInvestimento,
   ehPagamentoDeFaturaCartao,
   ehTransferenciaParaPessoaFisica,
+  extrairDocumentoContraparte,
   NOME_CATEGORIA_POR_OPERACAO,
   parearSaidasComPagamentoFatura,
 } from "./pluggyTransferDetection";
@@ -343,12 +344,15 @@ export async function syncPluggyItem(
       pluggyTransactionId: t.id,
       meioPagamento: resolveMeioPagamento(t),
       // Herda a classificação já confirmada pra categoria (ver Planejamento
-      // > Classificar Fixo/Variável) — transferência interna fica sempre
-      // sem natureza, já que não é gasto real.
+      // > Contas Fixas) — transferência interna fica sempre sem natureza,
+      // já que não é gasto real.
       natureza: ehTransferenciaInterna ? null : categoria.natureza,
       // Categoria original preservada de propósito (não vira "Transferência
       // interna") — só este flag decide o que entra nas somas de saldo.
       transferenciaInterna: ehTransferenciaInterna,
+      // CPF/CNPJ da contraparte, quando disponível — usado como critério de
+      // "mesmo destinatário" em Contas Fixas (ver lib/fixedBillMatching.ts).
+      contraparteDocumento: extrairDocumentoContraparte(t),
     });
   }
 

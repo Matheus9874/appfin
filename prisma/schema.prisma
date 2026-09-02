@@ -84,6 +84,12 @@ model Transaction {
   // fica de fora das somas de saldo, mas continua visível na listagem. A
   // categoria original é preservada de propósito (ver lib/pluggyTransferDetection.ts).
   transferenciaInterna Boolean         @default(false)
+  /// CPF/CNPJ (só dígitos) da contraparte da transação, quando o Pluggy
+  /// fornece (merchant enriquecido ou paymentData) — ver
+  /// lib/pluggyTransferDetection.ts#extrairDocumentoContraparte. Usado como
+  /// critério principal de "mesmo destinatário" em Contas Fixas (ver
+  /// lib/fixedBillMatching.ts), mais estável que o texto da descrição.
+  contraparteDocumento String?
   user                 User            @relation(fields: [userId], references: [id])
   category             Category        @relation(fields: [categoryId], references: [id])
   fixedBillMatch       FixedBillMatch?
@@ -237,24 +243,27 @@ model DismissedSuggestion {
  * reais todo mês (guardado em FixedBillMatch, não aqui).
  */
 model FixedBill {
-  id               String           @id @default(cuid())
-  userId           String
-  nome             String
-  valorEsperado    Decimal          @db.Decimal(12, 2)
-  valorMin         Decimal          @db.Decimal(12, 2)
-  valorMax         Decimal          @db.Decimal(12, 2)
-  categoryId       String?
+  id                   String           @id @default(cuid())
+  userId               String
+  nome                 String
+  valorEsperado        Decimal          @db.Decimal(12, 2)
+  valorMin             Decimal          @db.Decimal(12, 2)
+  valorMax             Decimal          @db.Decimal(12, 2)
+  categoryId           String?
   /// Descrições normalizadas (ver lib/fixedBillMatching.ts) já confirmadas
-  /// manualmente pra essa conta — um mesmo estabelecimento pode cobrar em
-  /// mais de um formato de texto (ex.: débito direto vs. boleto do mesmo
-  /// banco), então cada confirmação manual ACRESCENTA um padrão à lista em
-  /// vez de substituir o anterior. Junto com a faixa de valor, qualquer
-  /// padrão da lista permite vincular automaticamente sem pedir
-  /// confirmação de novo.
-  textosAprendidos String[]         @default([])
-  user             User             @relation(fields: [userId], references: [id])
-  category         Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  matches          FixedBillMatch[]
+  /// manualmente pra essa conta — fallback pra quando a transação não tem
+  /// contraparteDocumento disponível. Cada confirmação manual ACRESCENTA um
+  /// padrão à lista em vez de substituir o anterior.
+  textosAprendidos     String[]         @default([])
+  /// CPF/CNPJ (só dígitos) já confirmados manualmente pra essa conta —
+  /// critério preferencial sobre o texto (ver
+  /// Transaction.contraparteDocumento), estável mesmo quando o mesmo
+  /// estabelecimento muda o formato da descrição entre lançamentos (ex.:
+  /// débito direto vs. boleto do mesmo banco).
+  documentosAprendidos String[]         @default([])
+  user                 User             @relation(fields: [userId], references: [id])
+  category             Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  matches              FixedBillMatch[]
 
   @@index([userId])
 }

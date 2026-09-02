@@ -4,6 +4,7 @@ import {
   ehMovimentacaoDeInvestimento,
   ehPagamentoDeFaturaCartao,
   ehTransferenciaParaPessoaFisica,
+  extrairDocumentoContraparte,
   parearSaidasComPagamentoFatura,
 } from "./pluggyTransferDetection";
 
@@ -246,5 +247,55 @@ describe("parearSaidasComPagamentoFatura", () => {
       { id: "perto", valor: 100, data: new Date("2026-08-10") },
     ];
     expect(parearSaidasComPagamentoFatura(entradas, saidas)).toEqual(["perto"]);
+  });
+});
+
+describe("extrairDocumentoContraparte", () => {
+  // Dado real: o mesmo financiamento cobrado por débito direto num mês e
+  // por boleto no outro tem descrições de texto completamente diferentes,
+  // mas o CNPJ do merchant enriquecido pelo Pluggy é idêntico nos dois.
+  it("returns the merchant CNPJ (digits only), preferring it over paymentData", () => {
+    const debitoDireto = {
+      type: "DEBIT" as const,
+      merchant: { cnpj: "07207996000150" },
+      paymentData: {
+        receiver: { documentNumber: { type: "CNPJ" as const, value: "07.207.996/0001-50" } },
+      },
+    };
+    const boleto = {
+      type: "DEBIT" as const,
+      merchant: { cnpj: "07207996000150" },
+      paymentData: {
+        receiver: { documentNumber: { type: "CNPJ" as const, value: "07.207.996/0001-50" } },
+      },
+    };
+    expect(extrairDocumentoContraparte(debitoDireto)).toBe("07207996000150");
+    expect(extrairDocumentoContraparte(debitoDireto)).toBe(extrairDocumentoContraparte(boleto));
+  });
+
+  it("falls back to paymentData's receiver document when merchant is not enriched", () => {
+    const t = {
+      type: "DEBIT" as const,
+      merchant: null,
+      paymentData: {
+        receiver: { documentNumber: { type: "CNPJ" as const, value: "12.345.678/0001-99" } },
+      },
+    };
+    expect(extrairDocumentoContraparte(t)).toBe("12345678000199");
+  });
+
+  it("uses the payer's document for an incoming (CREDIT) transaction", () => {
+    const t = {
+      type: "CREDIT" as const,
+      paymentData: {
+        payer: { documentNumber: { type: "CNPJ" as const, value: "99.888.777/0001-11" } },
+      },
+    };
+    expect(extrairDocumentoContraparte(t)).toBe("99888777000111");
+  });
+
+  it("returns null when neither merchant nor paymentData has a document", () => {
+    expect(extrairDocumentoContraparte({ type: "DEBIT" })).toBeNull();
+    expect(extrairDocumentoContraparte({ type: "DEBIT", merchant: null, paymentData: null })).toBeNull();
   });
 });
