@@ -649,11 +649,10 @@ function ModalHistoricoContaFixa({
   return (
     <Modal title={`Histórico · ${conta.nome}`} onClose={onClose}>
       <p className="mb-3 text-xs text-muted">
-        Transações dos últimos 3 meses parecidas com essa conta — mesmo
-        destinatário aprendido e/ou valor na faixa. Batendo nos dois
-        critérios, já vem vinculada automaticamente; batendo só um deles,
-        você confirma com &ldquo;Vincular&rdquo; (aprende esse formato novo
-        pra não precisar confirmar de novo).
+        Transações dos últimos 3 meses do mesmo destinatário já confirmado
+        pra essa conta (mesmo documento ou texto). Se o valor também bater
+        na faixa, já vem vinculada automaticamente; senão você confirma com
+        &ldquo;Vincular&rdquo;.
       </p>
       {carregando ? (
         <p className="text-sm text-muted">Carregando...</p>
@@ -661,7 +660,7 @@ function ModalHistoricoContaFixa({
         <p className="text-sm text-negative">{erro}</p>
       ) : historico.length === 0 ? (
         <p className="text-sm text-muted">
-          Nenhuma transação parecida com essa conta nos últimos 3 meses.
+          Nenhuma transação do mesmo destinatário nos últimos 3 meses.
         </p>
       ) : (
         <div className="flex flex-col gap-2">

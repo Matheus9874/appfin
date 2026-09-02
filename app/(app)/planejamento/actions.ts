@@ -373,18 +373,17 @@ export type HistoricoItemContaFixa = {
 };
 
 /**
- * Transações dos últimos 3 meses (mês atual + 2 anteriores) relacionadas a
- * essa conta fixa: batendo nos dois critérios (identidade do destinatário
- * já confirmada — documento ou texto, ver bateIdentidade — E valor dentro
- * da faixa) OU batendo em só um dos dois, OU já oficialmente vinculadas.
- * Antes de listar, chama persistirHistoricoAutomatico: qualquer mês que já
- * bate nos dois critérios vira vínculo oficial na hora, então tudo que
- * aparece aqui como "vinculada" reflete isso; o que aparece só com um dos
- * critérios (valor OU identidade, não os dois) fica com `vinculada: false`
- * — precisa de confirmação manual (ver vincularTransacaoHistorico) porque
- * um critério isolado não garante que seja a mesma conta, mas precisa
- * APARECER aqui pra dar pra confirmar; do contrário um formato novo do
- * mesmo estabelecimento nunca teria como ser descoberto. Mais recente
+ * Transações dos últimos 3 meses (mês atual + 2 anteriores) do mesmo
+ * destinatário já confirmado pra essa conta — documento (CPF/CNPJ) ou
+ * texto normalizado, ver bateIdentidade — ou já oficialmente vinculadas.
+ * Não entra aqui por valor sozinho: bater só a faixa de valor não é sinal
+ * suficiente de que é o mesmo destinatário, e mostrar isso sem nexo é
+ * exatamente o ruído que esse histórico não deve ter. Antes de listar,
+ * chama persistirHistoricoAutomatico: qualquer mês que já bate nos dois
+ * critérios (identidade E valor) vira vínculo oficial na hora, então uma
+ * identidade batendo mas ainda não vinculada aqui é um sinal de conflito
+ * (mês ou transação já reivindicados por outro vínculo) — precisa de
+ * confirmação manual (ver vincularTransacaoHistorico). Mais recente
  * primeiro.
  */
 export async function buscarHistoricoContaFixa(
@@ -439,15 +438,13 @@ export async function buscarHistoricoContaFixa(
 
   const resultado = transacoes
     .filter((t) => {
-      const valorNum = Number(t.valor);
-      const bateValor = valorNum >= valorMin && valorNum <= valorMax;
       const candidato = {
         id: t.id,
-        valor: valorNum,
+        valor: Number(t.valor),
         descricaoNormalizada: normalizarDescricao(t.descricao),
         documento: t.contraparteDocumento,
       };
-      return bateValor || bateIdentidade(candidato, contaMatching) || vinculadasIds.has(t.id);
+      return bateIdentidade(candidato, contaMatching) || vinculadasIds.has(t.id);
     })
     .map((t) => ({
       id: t.id,
