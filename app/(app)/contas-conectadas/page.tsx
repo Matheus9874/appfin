@@ -27,6 +27,16 @@ export default async function ContasConectadasPage() {
     }),
   );
 
+  // Transações/investimentos importados do Pluggy sem nenhuma conexão ativa
+  // (a conexão original já foi desconectada sem apagar os dados na época,
+  // ou é dado antigo de antes de rastrear a conexão de origem) — mostra uma
+  // opção separada pra limpar esse resíduo, já que não tem mais nenhum
+  // "Desconectar" pra oferecer essa escolha.
+  const [transacoesOrfasCount, investimentosOrfaosCount] = await Promise.all([
+    prisma.transaction.count({ where: { userId, origem: "PLUGGY", pluggyItemId: null } }),
+    prisma.investment.count({ where: { userId, origem: "PLUGGY", pluggyItemId: null } }),
+  ]);
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -39,7 +49,13 @@ export default async function ContasConectadasPage() {
         </p>
       </div>
 
-      <ConnectedAccountsClient conexoesIniciais={conexoesIniciais} />
+      <ConnectedAccountsClient
+        conexoesIniciais={conexoesIniciais}
+        dadosOrfaos={{
+          transacoesCount: transacoesOrfasCount,
+          investimentosCount: investimentosOrfaosCount,
+        }}
+      />
     </div>
   );
 }

@@ -124,16 +124,85 @@ function ModalDesconectar({
   );
 }
 
+type DadosOrfaos = { transacoesCount: number; investimentosCount: number };
+
+function ModalApagarOrfaos({
+  dadosOrfaos,
+  onClose,
+  onConfirm,
+}: {
+  dadosOrfaos: DadosOrfaos;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function handleConfirmar() {
+    setErro(null);
+    setConfirmando(true);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível apagar.");
+      setConfirmando(false);
+    }
+  }
+
+  return (
+    <Modal title="Apagar dados sem conexão ativa" onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-muted">
+          {dadosOrfaos.transacoesCount} transação(ões) e{" "}
+          {dadosOrfaos.investimentosCount} investimento(s) foram importados
+          pelo Pluggy no passado, mas a conexão que os trouxe já foi
+          desconectada. Isso apaga esses lançamentos permanentemente — os
+          demais lançamentos manuais e de conexões ainda ativas não são
+          afetados.
+        </p>
+        <p className="flex items-center gap-1.5 text-xs font-medium text-negative">
+          <AlertTriangle size={12} />
+          Essa ação não pode ser desfeita.
+        </p>
+
+        {erro && <p className="text-sm text-negative">{erro}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-hover"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmar}
+            disabled={confirmando}
+            className="rounded-lg bg-negative px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {confirmando ? "Apagando..." : "Apagar permanentemente"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function ConnectedAccountsClient({
   conexoesIniciais,
+  dadosOrfaos,
 }: {
   conexoesIniciais: Conexao[];
+  dadosOrfaos: DadosOrfaos;
 }) {
   const [conexoes, setConexoes] = useState(conexoesIniciais);
+  const [orfaos, setOrfaos] = useState(dadosOrfaos);
   const [connectToken, setConnectToken] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [conexaoParaDesconectar, setConexaoParaDesconectar] = useState<Conexao | null>(null);
+  const [mostrarModalOrfaos, setMostrarModalOrfaos] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -252,6 +321,21 @@ export default function ConnectedAccountsClient({
     setConexaoParaDesconectar(null);
   }
 
+  async function handleConfirmarApagarOrfaos() {
+    setError(null);
+    setMessage(null);
+    const res = await fetch("/api/pluggy/orphaned-data", { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error ?? "Não foi possível apagar agora.");
+    }
+    setMessage(
+      `${data.transacoesApagadas} transação(ões) e ${data.investimentosApagados} investimento(s) sem conexão ativa foram apagados.`,
+    );
+    setOrfaos({ transacoesCount: 0, investimentosCount: 0 });
+    setMostrarModalOrfaos(false);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap gap-3">
@@ -285,6 +369,23 @@ export default function ConnectedAccountsClient({
           verificação de segurança uma vez por dia. Use o botão acima se
           quiser forçar uma atualização imediata.
         </p>
+      )}
+
+      {(orfaos.transacoesCount > 0 || orfaos.investimentosCount > 0) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning/30 bg-warning-soft p-4">
+          <p className="text-sm text-warning">
+            {orfaos.transacoesCount} transação(ões) e{" "}
+            {orfaos.investimentosCount} investimento(s) importados do Pluggy
+            continuam salvos de uma conexão já desconectada.
+          </p>
+          <button
+            type="button"
+            onClick={() => setMostrarModalOrfaos(true)}
+            className="shrink-0 rounded-lg bg-negative px-3.5 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Apagar esses dados
+          </button>
+        </div>
       )}
 
       {error && (
@@ -381,6 +482,14 @@ export default function ConnectedAccountsClient({
           onConfirm={(apagarDados) =>
             handleConfirmarDesconexao(conexaoParaDesconectar, apagarDados)
           }
+        />
+      )}
+
+      {mostrarModalOrfaos && (
+        <ModalApagarOrfaos
+          dadosOrfaos={orfaos}
+          onClose={() => setMostrarModalOrfaos(false)}
+          onConfirm={handleConfirmarApagarOrfaos}
         />
       )}
     </div>
