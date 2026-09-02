@@ -3,6 +3,7 @@
 import {
   ArrowLeftRight,
   Bot,
+  CalendarCheck,
   FileBarChart,
   HelpCircle,
   Landmark,
@@ -32,6 +33,23 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   {
+    href: "/planejamento",
+    label: "Planejamento",
+    icon: Wallet,
+    children: [
+      {
+        href: "/planejamento/contas-do-mes",
+        label: "Contas do Mês",
+        icon: CalendarCheck,
+      },
+      {
+        href: "/planejamento/contas-fixas",
+        label: "Contas Fixas",
+        icon: SlidersHorizontal,
+      },
+    ],
+  },
+  {
     href: "/transacoes",
     label: "Transações",
     icon: ArrowLeftRight,
@@ -50,18 +68,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: PiggyBank,
   },
   { href: "/metas", label: "Metas", icon: Target },
-  {
-    href: "/planejamento",
-    label: "Planejamento",
-    icon: Wallet,
-    children: [
-      {
-        href: "/planejamento/classificacao",
-        label: "Classificar Fixo/Variável",
-        icon: SlidersHorizontal,
-      },
-    ],
-  },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
   { href: "/assistente", label: "Assistente", icon: Bot },
 ];

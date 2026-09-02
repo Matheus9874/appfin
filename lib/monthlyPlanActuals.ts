@@ -30,10 +30,9 @@ export type RealizadoDespesas = {
 
 /**
  * Separa despesas do mês em Essencial/Pessoal (via Transaction.natureza,
- * confirmada em Planejamento > Classificar Fixo/Variável — ver
- * lib/fixedExpenseSuggestion.ts) e identifica aportes em investimento
- * vindos de transferências internas — função pura, sem acesso a banco, pra
- * ser testável isoladamente.
+ * marcada em Planejamento > Contas Fixas — ver lib/fixedBillService.ts) e
+ * identifica aportes em investimento vindos de transferências internas —
+ * função pura, sem acesso a banco, pra ser testável isoladamente.
  */
 export function classificarDespesasPorFatia(
   despesas: DespesaParaFatia[],

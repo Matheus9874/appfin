@@ -262,10 +262,10 @@ export default function PlanejamentoClient({
       </section>
 
       <Link
-        href="/planejamento/classificacao"
+        href="/planejamento/contas-fixas"
         className="text-sm font-medium text-accent hover:underline"
       >
-        Ajustar quais categorias contam como Essencial (Fixo/Variável) →
+        Cadastrar/ajustar contas fixas (o que conta como Essencial) →
       </Link>
     </div>
   );

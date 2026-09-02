@@ -4,9 +4,13 @@ import { getPluggyClient } from "./pluggy";
 import type { PluggyClient } from "pluggy-sdk";
 import { encontrarCategoriaCorrespondente } from "./pluggyCategoryMapping";
 import { resolveInvestmentType } from "./pluggyInvestmentMapping";
+import { reconciliarContasFixas } from "./fixedBillService";
 import {
+  ehCategoriaDeTransferencia,
   ehMovimentacaoDeInvestimento,
   ehPagamentoDeFaturaCartao,
+  ehTransferenciaParaPessoaFisica,
+  NOME_CATEGORIA_POR_OPERACAO,
   parearSaidasComPagamentoFatura,
 } from "./pluggyTransferDetection";
 import type {
@@ -180,13 +184,17 @@ export async function syncPluggyItem(
    * near-duplicates like "Restaurante" e "Restaurantes, bares e
    * lanchonetes" side by side.
    *
-   * `evitarFuzzyMatch` desliga esse casamento por palavra-chave — usado
-   * para transferências internas (pagamento de fatura, aporte/resgate de
-   * investimento), cujo nome de categoria ("Pagamento de cartão de
-   * crédito" etc.) compartilha palavras com categorias de gasto real do
-   * usuário (ex.: "Cartão de Crédito") sem ser a mesma coisa. Sem isso, uma
-   * fatura paga podia cair silenciosamente dentro da categoria de compras
-   * no cartão.
+   * `evitarFuzzyMatch` desliga esse casamento por palavra-chave — usado pra
+   * transferências internas (pagamento de fatura, aporte/resgate de
+   * investimento) e, de forma mais ampla, pra qualquer transação cuja
+   * categoria Pluggy seja da árvore "Transfers" (ver
+   * ehCategoriaDeTransferencia), mesmo quando não é transferência interna
+   * (ex.: Pix pra outra pessoa). Nomes desse tipo ("Pagamento de cartão de
+   * crédito", "Transferência - Pix" etc.) compartilham palavras com
+   * categorias de gasto real do usuário (ex.: "Cartão de Crédito", "Seguro
+   * saúde") sem ser a mesma coisa — sem isso, um Pix de valor qualquer pra
+   * um familiar podia cair silenciosamente numa categoria de consumo só por
+   * coincidência de palavra-chave.
    */
   async function resolveCategoryId(
     nomeCandidato: string,
@@ -306,13 +314,22 @@ export async function syncPluggyItem(
   const linhas = [];
   for (const t of todasTransacoesPluggy) {
     const tipo: TipoTransacao = t.type === "CREDIT" ? "RECEITA" : "DESPESA";
-    const nomeCategoria =
-      categoriasTraduzidas.get(t.categoryId ?? "") || t.category?.trim() || "Outros";
+    // Pix/TED/DOC pra pessoa física: ignora a categoria que o Pluggy deu
+    // (pouco confiável nesse caso — ver ehTransferenciaParaPessoaFisica) e
+    // usa um nome estável, em vez de arriscar cair numa categoria de
+    // consumo sem relação nenhuma com a transação real.
+    const ehPixPessoaFisica = ehTransferenciaParaPessoaFisica(t);
+    const nomeCategoria = ehPixPessoaFisica
+      ? (NOME_CATEGORIA_POR_OPERACAO[t.operationType?.toUpperCase() ?? ""] ??
+        "Transferências")
+      : categoriasTraduzidas.get(t.categoryId ?? "") || t.category?.trim() || "Outros";
     const ehTransferenciaInterna = transferenciaInternaPorId.get(t.id) ?? false;
     const categoria = await resolveCategoryId(
       nomeCategoria,
       tipo,
-      ehTransferenciaInterna,
+      ehTransferenciaInterna ||
+        ehCategoriaDeTransferencia(t.categoryId ?? null) ||
+        ehPixPessoaFisica,
     );
 
     linhas.push({
@@ -340,6 +357,14 @@ export async function syncPluggyItem(
     skipDuplicates: true,
   });
   const novasTransacoes = resultadoTransacoes.count;
+
+  // Vincula automaticamente as transações recém-importadas às Contas
+  // Fixas do usuário (sem precisar abrir a tela) — cobre tanto contas
+  // ainda sem padrão aprendido (mês atual, só por valor) quanto contas já
+  // confirmadas (últimos 3 meses, valor + destinatário).
+  if (novasTransacoes > 0) {
+    await reconciliarContasFixas(userId);
+  }
 
   let investimentosSincronizados = 0;
   // pageSize explícito: o padrão da API é 20 por página, e sem isso

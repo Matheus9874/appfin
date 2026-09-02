@@ -17,5 +17,6 @@ export function revalidateFinancialPaths() {
   revalidatePath("/relatorios/extrato");
   revalidatePath("/relatorios/gastos-por-categoria");
   revalidatePath("/planejamento");
-  revalidatePath("/planejamento/classificacao");
+  revalidatePath("/planejamento/contas-fixas");
+  revalidatePath("/planejamento/contas-do-mes");
 }

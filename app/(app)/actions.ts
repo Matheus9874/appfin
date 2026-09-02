@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
 import { NOVA_CATEGORIA_VALUE } from "@/lib/constants";
 import { revalidateFinancialPaths } from "@/lib/revalidateFinancialPaths";
+import { reconciliarContasFixas } from "@/lib/fixedBillService";
 import {
   parsePositiveNumber,
   parseRequiredDate,
@@ -97,6 +98,12 @@ export async function createTransaction(formData: FormData) {
       natureza: categoria.natureza,
     },
   });
+
+  // Vincula automaticamente a transação recém-lançada a alguma Conta Fixa,
+  // se bater os critérios — sem precisar abrir a tela de Contas Fixas.
+  if (tipo === "DESPESA") {
+    await reconciliarContasFixas(userId);
+  }
 
   revalidateFinancialPaths();
 }
