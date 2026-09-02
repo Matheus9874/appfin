@@ -1,9 +1,103 @@
 import { describe, expect, it } from "vitest";
 import {
+  ehCategoriaDeTransferencia,
   ehMovimentacaoDeInvestimento,
   ehPagamentoDeFaturaCartao,
+  ehTransferenciaParaPessoaFisica,
   parearSaidasComPagamentoFatura,
 } from "./pluggyTransferDetection";
+
+describe("ehCategoriaDeTransferencia", () => {
+  it("is true for any category under the Transfers tree (prefix 05)", () => {
+    expect(ehCategoriaDeTransferencia("05000000")).toBe(true);
+    expect(ehCategoriaDeTransferencia("05100000")).toBe(true);
+    expect(ehCategoriaDeTransferencia("05010000")).toBe(true);
+  });
+
+  it("is false for unrelated categories, including a Pix sent to a person that should not be conflated with a purchase category", () => {
+    expect(ehCategoriaDeTransferencia("11010000")).toBe(false); // Eating out
+    expect(ehCategoriaDeTransferencia("06000000")).toBe(false); // Health
+    expect(ehCategoriaDeTransferencia(null)).toBe(false);
+  });
+});
+
+describe("ehTransferenciaParaPessoaFisica", () => {
+  // Dado real de produção: um Pix DEBIT pra uma pessoa física veio com
+  // categoryId "200300000" ("Health insurance") do Pluggy — categoria
+  // completamente sem relação, só porque o classificador deles não tem
+  // sinal forte pra pagamento entre pessoas físicas.
+  it("is true for an outgoing Pix to an individual (CPF receiver), regardless of the (unreliable) category Pluggy assigned", () => {
+    expect(
+      ehTransferenciaParaPessoaFisica({
+        type: "DEBIT",
+        operationType: "PIX",
+        paymentData: {
+          receiver: { documentNumber: { type: "CPF" } },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("is true for an incoming Pix from an individual (CPF payer)", () => {
+    expect(
+      ehTransferenciaParaPessoaFisica({
+        type: "CREDIT",
+        operationType: "PIX",
+        paymentData: {
+          payer: { documentNumber: { type: "CPF" } },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for a real purchase from a business (CNPJ receiver)", () => {
+    expect(
+      ehTransferenciaParaPessoaFisica({
+        type: "DEBIT",
+        operationType: "PIX",
+        paymentData: {
+          receiver: { documentNumber: { type: "CNPJ" } },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a transfer between the user's own accounts (same CPF on both sides — Pluggy already classifies this reliably as 'Same person transfer')", () => {
+    expect(
+      ehTransferenciaParaPessoaFisica({
+        type: "DEBIT",
+        operationType: "PIX",
+        paymentData: {
+          payer: { documentNumber: { type: "CPF", value: "095.714.469-55" } },
+          receiver: { documentNumber: { type: "CPF", value: "095.714.469-55" } },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when there's no payment data or document type at all", () => {
+    expect(ehTransferenciaParaPessoaFisica({ type: "DEBIT", operationType: "PIX" })).toBe(
+      false,
+    );
+    expect(
+      ehTransferenciaParaPessoaFisica({
+        type: "DEBIT",
+        operationType: "PIX",
+        paymentData: { receiver: {} },
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for operation types that aren't a direct transfer", () => {
+    expect(
+      ehTransferenciaParaPessoaFisica({
+        type: "DEBIT",
+        operationType: "CARTAO",
+        paymentData: { receiver: { documentNumber: { type: "CPF" } } },
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("ehPagamentoDeFaturaCartao", () => {
   it("is true for the official 'Credit card payment' category, on the card side (CREDIT)", () => {

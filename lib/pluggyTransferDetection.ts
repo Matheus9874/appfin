@@ -54,6 +54,76 @@ export type PluggyTransactionSignal = {
 };
 
 /**
+ * Qualquer categoria da árvore "Transfers" do Pluggy (prefixo "05" —
+ * pagamento de fatura, Pix/boleto/TED pra terceiro, transferência mesma
+ * titularidade etc.), independente de contar ou não como transferência
+ * interna (`ehPagamentoDeFaturaCartao`/`ehMovimentacaoDeInvestimento` só
+ * cobrem os casos que sabemos excluir das somas). Usado pra decidir onde
+ * NÃO aplicar o casador de categoria por palavra-chave (ver
+ * lib/pluggySync.ts) — evita juntar uma transferência com uma categoria de
+ * consumo só por coincidência de palavra-chave.
+ */
+export function ehCategoriaDeTransferencia(categoryId: string | null): boolean {
+  return categoryId !== null && categoryId.startsWith("05");
+}
+
+type PluggyPaymentParticipant = {
+  documentNumber?: { type?: "CPF" | "CNPJ" | null; value?: string | null } | null;
+};
+
+export type PluggyPixSignal = {
+  type: "DEBIT" | "CREDIT";
+  operationType?: string | null;
+  paymentData?: {
+    payer?: PluggyPaymentParticipant | null;
+    receiver?: PluggyPaymentParticipant | null;
+  } | null;
+};
+
+const OPERACOES_TRANSFERENCIA_DIRETA = new Set(["PIX", "TED", "DOC"]);
+
+/** Nome de categoria estável pra usar quando `ehTransferenciaParaPessoaFisica` for verdadeiro. */
+export const NOME_CATEGORIA_POR_OPERACAO: Record<string, string> = {
+  PIX: "Transferência - PIX",
+  TED: "Transferência - TED",
+  DOC: "Transferência - DOC",
+};
+
+/**
+ * Pix/TED/DOC cuja contraparte (quem recebe, se a transação é uma saída;
+ * quem envia, se é uma entrada) é identificada por CPF — pessoa física
+ * DIFERENTE do próprio usuário — não uma empresa (CNPJ) nem uma
+ * transferência entre contas do próprio usuário (mesmo CPF nos dois lados;
+ * o Pluggy já classifica isso de forma específica e confiável como "Same
+ * person transfer", categoria "04000000" — não mexe nisso).
+ *
+ * Achado em dado real: o Pluggy classifica pagamento pra outra pessoa
+ * física de forma pouco confiável — o mesmo par de pessoas, mesma direção
+ * conceitual, teve uma perna (saída) caindo em "Health insurance" e a
+ * outra (entrada) em "Transfer - PIX", só porque o modelo de categorização
+ * deles não tem sinal forte pra esse caso. Por isso esse sinal ignora
+ * inteiramente a categoria que o Pluggy deu e força um nome estável (ver
+ * NOME_CATEGORIA_POR_OPERACAO) — vale pra qualquer usuário que mande
+ * dinheiro pra outra pessoa física, não só um caso específico.
+ */
+export function ehTransferenciaParaPessoaFisica(t: PluggyPixSignal): boolean {
+  const operacao = t.operationType?.toUpperCase();
+  if (!operacao || !OPERACOES_TRANSFERENCIA_DIRETA.has(operacao)) return false;
+
+  const contraparte = t.type === "DEBIT" ? t.paymentData?.receiver : t.paymentData?.payer;
+  const proprio = t.type === "DEBIT" ? t.paymentData?.payer : t.paymentData?.receiver;
+  if (contraparte?.documentNumber?.type !== "CPF") return false;
+
+  const documentoContraparte = contraparte.documentNumber?.value;
+  const documentoProprio = proprio?.documentNumber?.value;
+  if (documentoContraparte && documentoProprio && documentoContraparte === documentoProprio) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Sinal primário — não depende de encontrar a outra ponta da transferência,
  * já é confiável sozinho (vem da própria classificação oficial do Pluggy).
  * Cobre os dois lados do pagamento: a saída da conta corrente e a entrada
