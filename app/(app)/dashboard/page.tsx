@@ -173,7 +173,7 @@ export default async function DashboardPage() {
     totaisMensais.reduce((acc, m) => acc + m.receitas, 0) /
     (totaisMensais.length || 1);
   const reservaEmergencia = investimentosAtuais
-    .filter((i) => i.tipo === "RESERVA_EMERGENCIA")
+    .filter((i) => i.tipo === "RESERVA_EMERGENCIA" || i.contaComoReserva)
     .reduce((acc, i) => acc + Number(i.valor), 0);
 
   const indiceMesAtual = totaisMensais.findIndex(

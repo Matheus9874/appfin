@@ -67,9 +67,11 @@ export type RealizadoDoMes = {
 
 /**
  * Realizado do mês por fatia (Essencial/Pessoal/Investimento/Reserva) — ver
- * a regra completa no plano de Planejamento mensal. Reserva só aparece
- * quando algum Investment está marcado com tipo RESERVA_EMERGENCIA; sem
- * isso, fica em zero (o Pluggy não manda essa classificação, é só manual).
+ * a regra completa no plano de Planejamento mensal. Reserva soma qualquer
+ * Investment com tipo RESERVA_EMERGENCIA OU marcado manualmente como
+ * contaComoReserva (ex.: um Tesouro Direto de alta liquidez que também
+ * serve de reserva) — sem nenhum dos dois, fica em zero (o Pluggy não manda
+ * essa classificação, é sempre manual).
  */
 export async function calcularRealizadoDoMes(
   userId: string,
@@ -91,7 +93,7 @@ export async function calcularRealizadoDoMes(
     }),
     prisma.investment.findMany({
       where: { userId, data: { gte: inicio, lt: fim } },
-      select: { valor: true, tipo: true, origem: true },
+      select: { valor: true, tipo: true, origem: true, contaComoReserva: true },
     }),
   ]);
 
@@ -107,7 +109,7 @@ export async function calcularRealizadoDoMes(
   let reserva = 0;
   let investimentoManual = 0;
   for (const inv of investimentosDoMes) {
-    if (inv.tipo === "RESERVA_EMERGENCIA") {
+    if (inv.tipo === "RESERVA_EMERGENCIA" || inv.contaComoReserva) {
       reserva += Number(inv.valor);
     } else if (inv.origem === "MANUAL") {
       investimentoManual += Number(inv.valor);

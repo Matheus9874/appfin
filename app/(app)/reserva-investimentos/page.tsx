@@ -56,7 +56,13 @@ export default async function ReservaInvestimentosPage() {
     (t) => (valorPorTipo.get(t) ?? 0) > 0,
   ).map((t) => ({ tipo: t, valor: valorPorTipo.get(t) ?? 0 }));
 
-  const valorReserva = valorPorTipo.get("RESERVA_EMERGENCIA") ?? 0;
+  // Soma o tipo "Reserva de Emergência" com qualquer outro investimento
+  // marcado manualmente como "também conta como reserva" (ex.: um Tesouro
+  // Direto de alta liquidez) — sem isso ficaria de fora mesmo contando de
+  // fato como reserva pro usuário.
+  const valorReserva = investimentosAtuais
+    .filter((i) => i.tipo === "RESERVA_EMERGENCIA" || i.contaComoReserva)
+    .reduce((acc, i) => acc + Number(i.valor), 0);
   const despesaMediaMensal =
     totaisMensais.length > 0
       ? totaisMensais.reduce((acc, m) => acc + m.despesas, 0) /
@@ -165,9 +171,20 @@ export default async function ReservaInvestimentosPage() {
                           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-muted">
                             <Icon size={16} />
                           </span>
-                          <span className="font-medium">
-                            {INVESTMENT_TYPE_LABELS[inv.tipo]}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium">
+                              {INVESTMENT_TYPE_LABELS[inv.tipo]}
+                            </span>
+                            {inv.contaComoReserva && inv.tipo !== "RESERVA_EMERGENCIA" && (
+                              <span
+                                title="Também conta no total de Reserva de Emergência"
+                                className="inline-flex w-fit items-center gap-1 rounded-full bg-positive-soft px-2 py-0.5 text-[10px] font-semibold text-positive"
+                              >
+                                <ShieldCheck size={10} />
+                                Também reserva
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-muted">
@@ -199,6 +216,7 @@ export default async function ReservaInvestimentosPage() {
                             nome: inv.nome,
                             valor: Number(inv.valor),
                             dataISO: paraDataLocal(inv.data),
+                            contaComoReserva: inv.contaComoReserva,
                           }}
                         />
                       </td>

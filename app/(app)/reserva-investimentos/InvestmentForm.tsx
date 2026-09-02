@@ -143,6 +143,19 @@ export default function InvestmentForm() {
         />
       </div>
 
+      <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-5">
+        <input
+          id="contaComoReserva"
+          name="contaComoReserva"
+          type="checkbox"
+          className="h-4 w-4 rounded border-border"
+        />
+        <label htmlFor="contaComoReserva" className="flex items-center gap-1.5 text-sm">
+          Também conta como Reserva de Emergência
+          <InfoTooltip text="Marque se esse investimento (mesmo sendo de outro tipo, como Tesouro Direto) também deve ser somado no total da sua Reserva de Emergência — útil quando ele tem liquidez alta o suficiente pra cobrir imprevistos." />
+        </label>
+      </div>
+
       <div className="flex items-end sm:col-span-2 lg:col-span-5">
         <SubmitButton
           pendingText="Adicionando..."

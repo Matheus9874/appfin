@@ -117,6 +117,13 @@ model Investment {
   data               DateTime
   origem             OrigemTransacao @default(MANUAL)
   pluggyInvestmentId String?         @unique
+  /// Marca esse investimento como também servindo de reserva de emergência,
+  /// independente do `tipo` (ex.: um Tesouro Direto de alta liquidez que o
+  /// usuário considera parte da reserva) — soma no total de Reserva de
+  /// Emergência (ver app/(app)/reserva-investimentos/page.tsx e
+  /// lib/monthlyPlanActuals.ts) sem deixar de contar como o tipo original
+  /// na distribuição por tipo.
+  contaComoReserva   Boolean         @default(false)
   user               User            @relation(fields: [userId], references: [id])
   goals              Goal[]
 

@@ -26,6 +26,7 @@ export async function createInvestmentEntry(formData: FormData) {
     "Valor",
   );
   const data = parseRequiredDate(String(formData.get("data") ?? ""), "Data");
+  const contaComoReserva = formData.get("contaComoReserva") === "on";
 
   const userId = await getCurrentUserId();
 
@@ -37,6 +38,7 @@ export async function createInvestmentEntry(formData: FormData) {
       nome: nome || null,
       valor,
       data,
+      contaComoReserva,
     },
   });
 
@@ -61,6 +63,7 @@ export async function updateInvestmentEntry(formData: FormData) {
     "Valor",
   );
   const data = parseRequiredDate(String(formData.get("data") ?? ""), "Data");
+  const contaComoReserva = formData.get("contaComoReserva") === "on";
 
   const userId = await getCurrentUserId();
   const { count } = await prisma.investment.updateMany({
@@ -71,6 +74,7 @@ export async function updateInvestmentEntry(formData: FormData) {
       nome: nome || null,
       valor,
       data,
+      contaComoReserva,
     },
   });
 

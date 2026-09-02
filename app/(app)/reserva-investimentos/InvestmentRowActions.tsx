@@ -22,6 +22,7 @@ type InvestmentData = {
   nome: string | null;
   valor: number;
   dataISO: string;
+  contaComoReserva: boolean;
 };
 
 const labelClass = "text-xs font-medium text-muted";
@@ -218,6 +219,19 @@ export default function InvestmentRowActions({
                 required
                 className={controlClass}
               />
+            </div>
+
+            <div className="flex items-center gap-2 sm:col-span-2">
+              <input
+                id="edit-inv-contaComoReserva"
+                name="contaComoReserva"
+                type="checkbox"
+                defaultChecked={investment.contaComoReserva}
+                className="h-4 w-4 rounded border-border"
+              />
+              <label htmlFor="edit-inv-contaComoReserva" className="text-sm">
+                Também conta como Reserva de Emergência
+              </label>
             </div>
 
             <div className="flex items-end justify-end gap-2 sm:col-span-2">
