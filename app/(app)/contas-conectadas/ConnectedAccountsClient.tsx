@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Landmark, RefreshCw } from "lucide-react";
+import { Building2, Landmark, RefreshCw, Unlink } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import type { PluggyConnectProps } from "react-pluggy-connect";
@@ -42,6 +42,7 @@ export default function ConnectedAccountsClient({
   const [connectToken, setConnectToken] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [desconectandoId, setDesconectandoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -137,6 +138,37 @@ export default function ConnectedAccountsClient({
     }
   }
 
+  async function handleDisconnect(conexao: Conexao) {
+    if (
+      !confirm(
+        `Desconectar "${conexao.connectorName}"? As transações e investimentos já importados continuam salvos, mas a sincronização automática para.`,
+      )
+    ) {
+      return;
+    }
+    setDesconectandoId(conexao.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/pluggy/items", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: conexao.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Não foi possível desconectar agora.");
+        return;
+      }
+      setMessage(`"${conexao.connectorName}" desconectado.`);
+      setConexoes((atual) => atual.filter((c) => c.id !== conexao.id));
+    } catch {
+      setError("Não foi possível conectar ao servidor. Tente novamente.");
+    } finally {
+      setDesconectandoId(null);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap gap-3">
@@ -202,6 +234,7 @@ export default function ConnectedAccountsClient({
                 <th className="px-6 py-3">Instituição</th>
                 <th className="px-6 py-3">Conectado em</th>
                 <th className="px-6 py-3">Última sincronização</th>
+                <th className="px-6 py-3 text-right">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -227,6 +260,18 @@ export default function ConnectedAccountsClient({
                     {c.lastSyncedAt
                       ? formatDataHora(c.lastSyncedAt)
                       : "Nunca sincronizado"}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleDisconnect(c)}
+                      disabled={desconectandoId === c.id}
+                      title="Desconectar"
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-negative transition-colors hover:bg-negative-soft disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Unlink size={14} />
+                      {desconectandoId === c.id ? "Desconectando..." : "Desconectar"}
+                    </button>
                   </td>
                 </tr>
               ))}

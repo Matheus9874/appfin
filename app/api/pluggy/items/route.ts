@@ -90,3 +90,53 @@ export async function POST(request: Request) {
     );
   }
 }
+
+/**
+ * Desconecta uma conta do Pluggy: revoga o item do lado do Pluggy (melhor
+ * esforço — se já não existir lá ou a chamada falhar, segue mesmo assim
+ * pra garantir que o usuário sempre consiga se desconectar do próprio
+ * ponto de vista) e remove o PluggyItem local, que em cascata remove as
+ * PluggyAccount associadas. Não apaga transações/investimentos já
+ * importados — eles continuam como histórico, só param de ser atualizados.
+ */
+export async function DELETE(request: Request) {
+  let userId: string;
+  try {
+    userId = await getCurrentUserId();
+  } catch {
+    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
+  let id: string;
+  try {
+    const body = await request.json();
+    id = String(body?.id ?? "").trim();
+  } catch {
+    return NextResponse.json({ error: "Requisição inválida." }, { status: 400 });
+  }
+
+  if (!id) {
+    return NextResponse.json({ error: "id é obrigatório." }, { status: 400 });
+  }
+
+  const pluggyItem = await prisma.pluggyItem.findFirst({
+    where: { id, userId },
+  });
+  if (!pluggyItem) {
+    return NextResponse.json({ error: "Conexão não encontrada." }, { status: 404 });
+  }
+
+  try {
+    const client = getPluggyClient();
+    await client.deleteItem(pluggyItem.pluggyItemId);
+  } catch (error) {
+    console.error("Pluggy: erro ao revogar item no Pluggy (seguindo com a remoção local).", error);
+  }
+
+  await prisma.pluggyItem.delete({ where: { id: pluggyItem.id } });
+
+  revalidatePath("/contas-conectadas");
+  revalidatePath("/dashboard");
+
+  return NextResponse.json({ ok: true });
+}
