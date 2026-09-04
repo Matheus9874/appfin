@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  calcularTransferenciasInternas,
+  categoriaPagamentoCartaoEhEnganosa,
   ehCategoriaDeTransferencia,
   ehMovimentacaoDeInvestimento,
   ehPagamentoDeFaturaCartao,
@@ -111,17 +113,22 @@ describe("ehPagamentoDeFaturaCartao", () => {
     ).toBe(true);
   });
 
-  it("is true for 'Credit card payment' on the checking-account side too (DEBIT)", () => {
-    // Real example found in production data: "DEBITO DE CARTAO" on the bank
-    // account, DEBIT direction, categoryId 05100000 — the outgoing leg of
-    // paying the card bill from the checking account.
+  it("is false for 'Credit card payment' on the checking-account side (DEBIT) — needs pairing, not trusted alone", () => {
+    // Real example found in production data (setembro/2026): a genuine
+    // debit-card purchase also came back from Pluggy with categoryId
+    // 05100000 and type DEBIT — indistinguishable from "DEBITO DE CARTAO"
+    // (the outgoing leg of paying the card bill) by category alone. Trusting
+    // this side unconditionally silently swallowed real purchases as
+    // internal transfers. The DEBIT side must instead go through
+    // parearSaidasComPagamentoFatura (value+date match against a confirmed
+    // CREDIT-side entrada) in pluggySync.ts.
     expect(
       ehPagamentoDeFaturaCartao({
         type: "DEBIT",
         categoryId: "05100000",
         creditCardMetadata: null,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("is true for 'Transfers' + creditCardMetadata only when type is CREDIT (a payment/refund reducing what's owed)", () => {
@@ -297,5 +304,93 @@ describe("extrairDocumentoContraparte", () => {
   it("returns null when neither merchant nor paymentData has a document", () => {
     expect(extrairDocumentoContraparte({ type: "DEBIT" })).toBeNull();
     expect(extrairDocumentoContraparte({ type: "DEBIT", merchant: null, paymentData: null })).toBeNull();
+  });
+});
+
+describe("categoriaPagamentoCartaoEhEnganosa", () => {
+  it("is true for a debit-side transaction under the 'Credit card payment' category", () => {
+    expect(
+      categoriaPagamentoCartaoEhEnganosa({
+        type: "DEBIT",
+        categoryId: "05100000",
+        creditCardMetadata: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("is false on the credit side (genuine bill-payment leg, category name is accurate there)", () => {
+    expect(
+      categoriaPagamentoCartaoEhEnganosa({
+        type: "CREDIT",
+        categoryId: "05100000",
+        creditCardMetadata: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for unrelated categories", () => {
+    expect(
+      categoriaPagamentoCartaoEhEnganosa({
+        type: "DEBIT",
+        categoryId: "11010000",
+        creditCardMetadata: null,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("calcularTransferenciasInternas", () => {
+  it("does not mark an unpaired debit-side 'Credit card payment' purchase as internal transfer", () => {
+    const transacoes = [
+      {
+        id: "compra-debito",
+        type: "DEBIT" as const,
+        categoryId: "05100000",
+        creditCardMetadata: null,
+        amount: 89.9,
+        date: "2026-09-10",
+      },
+    ];
+    const mapa = calcularTransferenciasInternas(transacoes);
+    expect(mapa.get("compra-debito")).toBeUndefined();
+  });
+
+  it("marks the real card-bill-payment pair (CREDIT confirmed + matching DEBIT) as internal transfer on both legs", () => {
+    const transacoes = [
+      {
+        id: "entrada-fatura",
+        type: "CREDIT" as const,
+        categoryId: "05100000",
+        creditCardMetadata: null,
+        amount: 1836.74,
+        date: "2026-09-05",
+      },
+      {
+        id: "saida-conta",
+        type: "DEBIT" as const,
+        categoryId: "05100000",
+        creditCardMetadata: null,
+        amount: 1836.74,
+        date: "2026-09-05",
+      },
+    ];
+    const mapa = calcularTransferenciasInternas(transacoes);
+    expect(mapa.get("entrada-fatura")).toBe(true);
+    expect(mapa.get("saida-conta")).toBe(true);
+  });
+
+  it("still marks an investment contribution as internal transfer (primary signal, no pairing needed)", () => {
+    const transacoes = [
+      {
+        id: "aporte",
+        type: "DEBIT" as const,
+        categoryId: "03020000",
+        creditCardMetadata: null,
+        amount: 500,
+        date: "2026-09-01",
+      },
+    ];
+    const mapa = calcularTransferenciasInternas(transacoes);
+    expect(mapa.get("aporte")).toBe(true);
   });
 });

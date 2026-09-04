@@ -17,7 +17,17 @@
  * encontrado ao investigar dados reais (ver comentários abaixo).
  */
 
-/** "Credit card payment" — categoria específica só usada para quitação de fatura, nos dois sentidos (saída da conta corrente ou entrada no cartão). Nenhuma compra real observada usando esta categoria. */
+/**
+ * "Credit card payment" — pensada pela Pluggy pra quitação de fatura, mas
+ * dado real de produção (setembro/2026) mostrou compras reais no débito
+ * também caindo aqui, não só a saída da conta pagando a fatura. Por isso só
+ * é confiável sozinha do lado CREDIT (entrada no cartão, ver
+ * `ehPagamentoDeFaturaCartao`) — do lado DEBIT precisa casar por
+ * valor+data com uma entrada confirmada (sinal secundário, ver
+ * `parearSaidasComPagamentoFatura`), senão uma compra de débito qualquer
+ * que ganhe essa categoria por engano da Pluggy vira transferência interna
+ * silenciosamente.
+ */
 const CATEGORY_ID_PAGAMENTO_CARTAO = "05100000";
 
 /**
@@ -157,19 +167,34 @@ export function extrairDocumentoContraparte(t: PluggyContraparteSignal): string 
 /**
  * Sinal primário — não depende de encontrar a outra ponta da transferência,
  * já é confiável sozinho (vem da própria classificação oficial do Pluggy).
- * Cobre os dois lados do pagamento: a saída da conta corrente e a entrada
- * no cartão.
+ * Só cobre o lado CREDIT (entrada no cartão): a saída da conta corrente com
+ * essa mesma categoria (05100000) não entra aqui de propósito — precisa
+ * casar com uma entrada confirmada (ver `parearSaidasComPagamentoFatura`
+ * em pluggySync.ts), já que a Pluggy também usa essa categoria pra compras
+ * reais no débito (achado em dado real).
  */
 export function ehPagamentoDeFaturaCartao(t: PluggyTransactionSignal): boolean {
+  if (t.type !== "CREDIT") return false;
   if (t.categoryId === CATEGORY_ID_PAGAMENTO_CARTAO) return true;
-  if (
-    t.type === "CREDIT" &&
-    t.categoryId === CATEGORY_ID_TRANSFERENCIAS &&
-    t.creditCardMetadata != null
-  ) {
+  if (t.categoryId === CATEGORY_ID_TRANSFERENCIAS && t.creditCardMetadata != null) {
     return true;
   }
   return false;
+}
+
+/**
+ * Verdadeiro quando o nome de categoria que a Pluggy dá ("Pagamento de
+ * cartão de crédito") seria enganoso pra mostrar como categoria de consumo —
+ * o lado DEBIT de "05100000" quando NÃO for de fato pagamento de fatura (ver
+ * calcularTransferenciasInternas: só sobrescreva o nome quando o id não
+ * ficar marcado como transferência interna). Sem isso, uma compra real no
+ * débito continuaria aparecendo rotulada "Pagamento de cartão de crédito"
+ * mesmo depois de deixar de contar como transferência — achado em dado real
+ * (setembro/2026): usuário via a categoria errada mesmo após a correção do
+ * flag de transferência.
+ */
+export function categoriaPagamentoCartaoEhEnganosa(t: PluggyTransactionSignal): boolean {
+  return t.type === "DEBIT" && t.categoryId === CATEGORY_ID_PAGAMENTO_CARTAO;
 }
 
 /** Sinal primário para aporte/resgate de investimento — mesma lógica. */
@@ -184,6 +209,12 @@ export function ehMovimentacaoDeInvestimento(t: {
 
 export type CandidataSaida = { id: string; valor: number; data: Date };
 export type EntradaConfirmada = { valor: number; data: Date };
+
+export type PluggyTransactionForClassification = PluggyTransactionSignal & {
+  id: string;
+  amount: number;
+  date: string | Date;
+};
 
 /**
  * Sinal secundário: casa cada "entrada" já confirmada como pagamento de
@@ -227,4 +258,35 @@ export function parearSaidasComPagamentoFatura(
   }
 
   return pareados;
+}
+
+/**
+ * Combina o sinal primário (`ehPagamentoDeFaturaCartao`/
+ * `ehMovimentacaoDeInvestimento`) com o secundário
+ * (`parearSaidasComPagamentoFatura`) sobre um conjunto de transações Pluggy,
+ * retornando quais ids são transferência interna. Usado tanto na
+ * sincronização (lib/pluggySync.ts) quanto na reclassificação retroativa de
+ * transações já importadas — mesma lógica, sem duplicar.
+ */
+export function calcularTransferenciasInternas(
+  transacoes: PluggyTransactionForClassification[],
+): Map<string, boolean> {
+  const transferenciaInternaPorId = new Map<string, boolean>();
+  for (const t of transacoes) {
+    if (ehPagamentoDeFaturaCartao(t) || ehMovimentacaoDeInvestimento(t)) {
+      transferenciaInternaPorId.set(t.id, true);
+    }
+  }
+
+  const entradasPagamentoFatura = transacoes
+    .filter((t) => t.type === "CREDIT" && ehPagamentoDeFaturaCartao(t))
+    .map((t) => ({ valor: Math.abs(t.amount), data: new Date(t.date) }));
+  const candidatasSaida = transacoes
+    .filter((t) => t.type === "DEBIT" && !transferenciaInternaPorId.get(t.id))
+    .map((t) => ({ id: t.id, valor: Math.abs(t.amount), data: new Date(t.date) }));
+  for (const id of parearSaidasComPagamentoFatura(entradasPagamentoFatura, candidatasSaida)) {
+    transferenciaInternaPorId.set(id, true);
+  }
+
+  return transferenciaInternaPorId;
 }

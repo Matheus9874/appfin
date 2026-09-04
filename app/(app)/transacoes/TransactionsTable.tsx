@@ -56,13 +56,14 @@ type TransactionRow = {
   transferenciaInterna: boolean;
 };
 
-type MeioPagamentoTabKey = "todas" | "CREDITO" | "PIX" | "DEBITO";
+type MeioPagamentoTabKey = "todas" | "CREDITO" | "PIX" | "DEBITO" | "BOLETO";
 
 const MEIO_PAGAMENTO_TABS: { key: MeioPagamentoTabKey; label: string }[] = [
   { key: "todas", label: "Todas" },
   { key: "CREDITO", label: "Cartão de crédito" },
   { key: "PIX", label: "Pix" },
   { key: "DEBITO", label: "Débito" },
+  { key: "BOLETO", label: "Boletos" },
 ];
 
 type OrigemFiltro = "todas" | OrigemTransacao;
@@ -140,6 +141,8 @@ export default function TransactionsTable({
         .length,
       PIX: transacoesBase.filter((t) => t.meioPagamento === "PIX").length,
       DEBITO: transacoesBase.filter((t) => t.meioPagamento === "DEBITO")
+        .length,
+      BOLETO: transacoesBase.filter((t) => t.meioPagamento === "BOLETO")
         .length,
     }),
     [transacoesBase],

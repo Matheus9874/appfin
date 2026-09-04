@@ -6,13 +6,12 @@ import { encontrarCategoriaCorrespondente } from "./pluggyCategoryMapping";
 import { resolveInvestmentType } from "./pluggyInvestmentMapping";
 import { reconciliarContasFixas } from "./fixedBillService";
 import {
+  calcularTransferenciasInternas,
+  categoriaPagamentoCartaoEhEnganosa,
   ehCategoriaDeTransferencia,
-  ehMovimentacaoDeInvestimento,
-  ehPagamentoDeFaturaCartao,
   ehTransferenciaParaPessoaFisica,
   extrairDocumentoContraparte,
   NOME_CATEGORIA_POR_OPERACAO,
-  parearSaidasComPagamentoFatura,
 } from "./pluggyTransferDetection";
 import type {
   MeioPagamento,
@@ -291,26 +290,10 @@ export async function syncPluggyItem(
     todasTransacoesPluggy.push(...transacoesPluggy);
   }
 
-  // Sinal primário (confiável sozinho, não depende de achar a outra ponta):
-  // pagamento de fatura de cartão ou aporte/resgate de investimento.
-  const transferenciaInternaPorId = new Map<string, boolean>();
-  for (const t of todasTransacoesPluggy) {
-    if (ehPagamentoDeFaturaCartao(t) || ehMovimentacaoDeInvestimento(t)) {
-      transferenciaInternaPorId.set(t.id, true);
-    }
-  }
-
-  // Sinal secundário: casa a saída da conta corrente com a entrada do
-  // cartão já confirmada acima — só entra aqui quem realmente parear.
-  const entradasPagamentoFatura = todasTransacoesPluggy
-    .filter((t) => t.type === "CREDIT" && ehPagamentoDeFaturaCartao(t))
-    .map((t) => ({ valor: Math.abs(t.amount), data: new Date(t.date) }));
-  const candidatasSaida = todasTransacoesPluggy
-    .filter((t) => t.type === "DEBIT" && !transferenciaInternaPorId.get(t.id))
-    .map((t) => ({ id: t.id, valor: Math.abs(t.amount), data: new Date(t.date) }));
-  for (const id of parearSaidasComPagamentoFatura(entradasPagamentoFatura, candidatasSaida)) {
-    transferenciaInternaPorId.set(id, true);
-  }
+  // Sinal primário (pagamento de fatura de cartão / aporte-resgate de
+  // investimento) + secundário (pareamento saída-entrada) — ver
+  // calcularTransferenciasInternas em pluggyTransferDetection.ts.
+  const transferenciaInternaPorId = calcularTransferenciasInternas(todasTransacoesPluggy);
 
   const linhas = [];
   for (const t of todasTransacoesPluggy) {
@@ -320,11 +303,17 @@ export async function syncPluggyItem(
     // usa um nome estável, em vez de arriscar cair numa categoria de
     // consumo sem relação nenhuma com a transação real.
     const ehPixPessoaFisica = ehTransferenciaParaPessoaFisica(t);
+    const ehTransferenciaInterna = transferenciaInternaPorId.get(t.id) ?? false;
+    // Compra real no débito com a categoria "Pagamento de cartão de
+    // crédito" (não pareada como fatura de verdade): usar esse nome seria
+    // enganoso, já que não é transferência — ver
+    // categoriaPagamentoCartaoEhEnganosa.
     const nomeCategoria = ehPixPessoaFisica
       ? (NOME_CATEGORIA_POR_OPERACAO[t.operationType?.toUpperCase() ?? ""] ??
         "Transferências")
-      : categoriasTraduzidas.get(t.categoryId ?? "") || t.category?.trim() || "Outros";
-    const ehTransferenciaInterna = transferenciaInternaPorId.get(t.id) ?? false;
+      : !ehTransferenciaInterna && categoriaPagamentoCartaoEhEnganosa(t)
+        ? "Outros"
+        : categoriasTraduzidas.get(t.categoryId ?? "") || t.category?.trim() || "Outros";
     const categoria = await resolveCategoryId(
       nomeCategoria,
       tipo,
@@ -347,8 +336,8 @@ export async function syncPluggyItem(
       // > Contas Fixas) — transferência interna fica sempre sem natureza,
       // já que não é gasto real.
       natureza: ehTransferenciaInterna ? null : categoria.natureza,
-      // Categoria original preservada de propósito (não vira "Transferência
-      // interna") — só este flag decide o que entra nas somas de saldo.
+      // Categoria não vira "Transferência interna" — só este flag decide o
+      // que entra nas somas de saldo.
       transferenciaInterna: ehTransferenciaInterna,
       // CPF/CNPJ da contraparte, quando disponível — usado como critério de
       // "mesmo destinatário" em Contas Fixas (ver lib/fixedBillMatching.ts).
@@ -417,4 +406,124 @@ export async function syncPluggyItem(
     transacoesImportadas: novasTransacoes,
     investimentosImportados: investimentosSincronizados,
   };
+}
+
+export type ReclassifyResult = { transacoesCorrigidas: number };
+
+/**
+ * Reprocessa, por conexão, as transações já importadas que hoje estão
+ * marcadas como transferência interna (despesa) mas podem ter sido vítimas
+ * do falso positivo corrigido em `ehPagamentoDeFaturaCartao` (categoria
+ * "05100000" do Pluggy também usada por compras reais no débito, achado em
+ * dado real de produção — ver lib/pluggyTransferDetection.ts). A
+ * classificação é calculada uma vez, na sincronização, e fica gravada no
+ * banco (`Transaction.transferenciaInterna`) — corrigir a função de
+ * detecção sozinha não conserta o que já foi importado, por isso essa
+ * função existe.
+ *
+ * Também corrige `categoryId` quando a transação era o caso enganoso
+ * (`categoriaPagamentoCartaoEhEnganosa` — débito categorizado "Pagamento de
+ * cartão de crédito" pela Pluggy sem ser fatura de verdade): sem isso, a
+ * transação deixa de contar como transferência mas continua rotulada como
+ * se fosse pagamento de cartão, o que ainda confunde o usuário (achado ao
+ * revisar com dado real).
+ */
+export async function reclassificarTransferenciasInternas(
+  userId: string,
+): Promise<ReclassifyResult> {
+  const client = getPluggyClient();
+  const itens = await prisma.pluggyItem.findMany({ where: { userId } });
+
+  let transacoesCorrigidas = 0;
+  // Categoria genérica pra onde vão as compras de débito que a Pluggy
+  // rotulou (errado) como "Pagamento de cartão de crédito" — resolvida uma
+  // vez e reaproveitada entre conexões, já que é a mesma pro usuário todo.
+  let categoriaOutros: { id: string; natureza: NaturezaCusto | null } | null = null;
+  async function obterCategoriaOutros() {
+    if (categoriaOutros) return categoriaOutros;
+    const existente = await prisma.category.findFirst({
+      where: { userId, tipo: "DESPESA", nome: "Outros" },
+      select: { id: true, natureza: true },
+    });
+    categoriaOutros =
+      existente ??
+      (await prisma.category.create({
+        data: { userId, nome: "Outros", tipo: "DESPESA", natureza: "VARIAVEL" },
+        select: { id: true, natureza: true },
+      }));
+    return categoriaOutros;
+  }
+
+  for (const item of itens) {
+    const candidatas = await prisma.transaction.findMany({
+      where: {
+        userId,
+        pluggyItemId: item.id,
+        origem: "PLUGGY",
+        tipo: "DESPESA",
+        transferenciaInterna: true,
+      },
+      select: {
+        id: true,
+        pluggyTransactionId: true,
+        data: true,
+        category: { select: { natureza: true } },
+      },
+    });
+    if (candidatas.length === 0) continue;
+
+    const dataMaisAntiga = candidatas.reduce(
+      (min, c) => (c.data < min ? c.data : min),
+      candidatas[0].data,
+    );
+    const dateFrom = formatDateFrom(dataMaisAntiga);
+
+    const accounts = await client.fetchAccounts(item.pluggyItemId);
+    const todasTransacoesPluggy = [];
+    for (const account of accounts.results) {
+      const transacoesPluggy = await client.fetchAllTransactions(account.id, {
+        dateFrom,
+      });
+      todasTransacoesPluggy.push(...transacoesPluggy);
+    }
+
+    const transacaoPluggyPorId = new Map(todasTransacoesPluggy.map((t) => [t.id, t]));
+    const transferenciaInternaPorId = calcularTransferenciasInternas(todasTransacoesPluggy);
+
+    for (const candidata of candidatas) {
+      if (!candidata.pluggyTransactionId) continue;
+      const transacaoBruta = transacaoPluggyPorId.get(candidata.pluggyTransactionId);
+      // Não achado na janela buscada: não confirma nem contradiz o que já
+      // está salvo, então não mexe.
+      if (!transacaoBruta) continue;
+      // Continua sendo transferência real de verdade.
+      if (transferenciaInternaPorId.get(candidata.pluggyTransactionId)) continue;
+
+      const dadosAtualizacao: {
+        transferenciaInterna: false;
+        natureza: NaturezaCusto | null;
+        categoryId?: string;
+      } = {
+        transferenciaInterna: false,
+        natureza: candidata.category.natureza,
+      };
+      if (categoriaPagamentoCartaoEhEnganosa(transacaoBruta)) {
+        const outros = await obterCategoriaOutros();
+        dadosAtualizacao.categoryId = outros.id;
+        dadosAtualizacao.natureza = outros.natureza;
+      }
+
+      await prisma.transaction.update({
+        where: { id: candidata.id },
+        data: dadosAtualizacao,
+      });
+      transacoesCorrigidas++;
+    }
+  }
+
+  if (transacoesCorrigidas > 0) {
+    await reconciliarContasFixas(userId);
+  }
+
+  return { transacoesCorrigidas };
 }

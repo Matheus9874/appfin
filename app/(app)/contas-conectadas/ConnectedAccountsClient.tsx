@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Building2, Landmark, RefreshCw, Unlink } from "lucide-react";
+import { AlertTriangle, Building2, Landmark, RefreshCw, Unlink, Wrench } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import type { PluggyConnectProps } from "react-pluggy-connect";
@@ -201,6 +201,7 @@ export default function ConnectedAccountsClient({
   const [connectToken, setConnectToken] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [reclassifying, setReclassifying] = useState(false);
   const [conexaoParaDesconectar, setConexaoParaDesconectar] = useState<Conexao | null>(null);
   const [mostrarModalOrfaos, setMostrarModalOrfaos] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -300,6 +301,31 @@ export default function ConnectedAccountsClient({
     }
   }
 
+  async function handleReclassify() {
+    setReclassifying(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/pluggy/reclassify-transfers", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Não foi possível corrigir agora.");
+        return;
+      }
+      setMessage(
+        data.transacoesCorrigidas > 0
+          ? `${data.transacoesCorrigidas} transação(ões) corrigida(s) — não eram transferência interna.`
+          : "Nenhuma transação precisava de correção.",
+      );
+    } catch {
+      setError("Não foi possível conectar ao servidor. Tente novamente.");
+    } finally {
+      setReclassifying(false);
+    }
+  }
+
   async function handleConfirmarDesconexao(conexao: Conexao, apagarDados: boolean) {
     setError(null);
     setMessage(null);
@@ -358,6 +384,19 @@ export default function ConnectedAccountsClient({
           >
             <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
             {syncing ? "Sincronizando..." : "Sincronizar agora"}
+          </button>
+        )}
+
+        {conexoes.length > 0 && (
+          <button
+            type="button"
+            onClick={handleReclassify}
+            disabled={reclassifying}
+            title="Reprocessa transações já importadas que hoje aparecem como transferência interna, corrigindo as que na verdade são gastos reais."
+            className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Wrench size={16} />
+            {reclassifying ? "Corrigindo..." : "Corrigir transferências mal classificadas"}
           </button>
         )}
       </div>
