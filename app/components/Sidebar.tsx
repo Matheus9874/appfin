@@ -98,7 +98,7 @@ export default function Sidebar({
           collapsed ? "md:flex-col md:justify-center" : ""
         }`}
       >
-        <div className="flex items-center gap-2">
+        <Link href="/dashboard" onClick={onCloseMobile} className="flex items-center gap-2">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7c3aed] to-[#06b6d4] text-white">
             <Logo size={20} />
           </div>
@@ -110,7 +110,7 @@ export default function Sidebar({
               Fin
             </span>
           </span>
-        </div>
+        </Link>
 
         <button
           type="button"
